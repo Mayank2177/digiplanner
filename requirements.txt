@@ -1,0 +1,13 @@
+streamlit
+pillow
+pandas
+numpy
+opencv-python-headless
+pytesseract
+pdf2image
+paddlepaddle
+paddleocr
+sqlalchemy
+python-dotenv
+reportlab
+openpyxl
