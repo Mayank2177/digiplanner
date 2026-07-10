@@ -1,0 +1,31 @@
+.marquee-strip {
+  background: linear-gradient(90deg, var(--neon-violet), var(--neon-fuchsia), var(--neon-cyan), var(--neon-violet));
+  background-size: 300% 100%;
+  animation: marqueeGradient 8s linear infinite;
+  padding: 1rem 0;
+  overflow: hidden;
+  white-space: nowrap;
+  position: relative;
+}
+
+.marquee-content {
+  display: inline-flex;
+  gap: 4rem;
+  animation: marqueeScroll 30s linear infinite;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  letter-spacing: 0.05em;
+}
+
+.marquee-content span {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.marquee-content span::before {
+  content: '◆';
+  color: rgba(255, 255, 255, 0.5);
+}
