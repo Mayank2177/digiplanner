@@ -19,6 +19,11 @@
 * Remaining budget calculations
 
 
+
+![Project Screenshot](results/IMG-20260709-WA0004.jpg)
+![Project Screenshot](results/IMG-20260709-WA0006.jpg)
+
+
 🎨 Modern UI/UX
 * Beautiful gradient designs
 * Smooth animations
