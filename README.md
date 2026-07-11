@@ -1,6 +1,9 @@
 # Digi-planner
 
-Version Python License
+![Version](https://img.shields.io/badge/version-1.0-blue)
+![Python](https://img.shields.io/badge/python-3.8+-green)
+![License](https://img.shields.io/badge/license-MIT-orange)
+
 
 * Automated OCR-based text extraction from scanned receipts and invoices.
 * Field-level parsing for date, vendor, amount, tax, and line items.
