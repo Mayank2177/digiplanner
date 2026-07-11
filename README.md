@@ -1,4 +1,6 @@
-# digiplanner
+# Digi-planner
+
+Version Python License
 
 * Automated OCR-based text extraction from scanned receipts and invoices.
 * Field-level parsing for date, vendor, amount, tax, and line items.
