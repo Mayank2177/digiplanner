@@ -1,77 +1,203 @@
-import re
-from dataclasses import dataclass
-from typing import List, Optional, Pattern
+"""
+paddle_engine.py — Thread-safe PaddleOCR text extraction engine.
 
-@dataclass
-class ReceiptTemplate:
+Fixes applied:
+  - Thread-safe singleton with double-checked locking.
+  - Tracks init failures to avoid infinite retry loops.
+  - Supports multiple languages and angle classification.
+  - Proper exception propagation with custom exception types.
+"""
+
+import threading
+import numpy as np
+from PIL import Image
+from typing import Optional, List
+
+# ─── Module-level state ─────────────────────────────────────────────────────
+_paddle_engine: Optional[object] = None
+_paddle_lock = threading.Lock()
+_paddle_init_failed = False
+_paddle_init_error: Optional[Exception] = None
+
+
+class PaddleOCRError(Exception):
+    """Raised when PaddleOCR initialization or inference fails."""
+    pass
+
+
+def _get_paddle_engine(
+    lang: str = "en",
+    use_angle_cls: bool = True,
+    show_log: bool = False,
+    use_gpu: bool = False,
+) -> object:
     """
-    Defines a regex-based template for a specific vendor layout.
+    Get or initialize the PaddleOCR engine (thread-safe singleton).
+
+    Uses double-checked locking pattern for thread safety without
+    holding the lock on every call after initialization.
+
+    Args:
+        lang: Language code ("en", "ch", "fr", etc.).
+        use_angle_cls: Enable rotation angle classification.
+        show_log: Show PaddleOCR internal logs.
+        use_gpu: Use GPU for inference (if available).
+
+    Returns:
+        Initialized PaddleOCR instance.
+
+    Raises:
+        PaddleOCRError: If PaddleOCR is not installed or init fails.
     """
-    name: str
-    vendor_pattern: str  # Regex to identify this vendor (e.g. "Walmart")
-    date_pattern: Optional[str] = None
-    total_pattern: Optional[str] = None
-    tax_pattern: Optional[str] = None
-    subtotal_pattern: Optional[str] = None
-    bill_id_pattern: Optional[str] = None
-    line_item_pattern: Optional[str] = None
+    global _paddle_engine, _paddle_init_failed, _paddle_init_error
 
-# Define common templates
-TEMPLATES: List[ReceiptTemplate] = [
-    ReceiptTemplate(
-        name="Walmart",
-        vendor_pattern=r"(?i)walmart",
-        date_pattern=r"(\d{2}/\d{2}/\d{2,4})",  # MM/DD/YY
-        total_pattern=r"(?i)\btotal\s+due\s+\$?\s*(\d+\.\d{2})",
-        tax_pattern=r"(?i)tax\s+\d+\s*\$?\s*(\d+\.\d{2})",
-        bill_id_pattern=r"(?i)tc#\s*(\d+)"
-    ),
-    ReceiptTemplate(
-        name="Target",
-        vendor_pattern=r"(?i)target",
-        date_pattern=r"(\d{2}/\d{2}/\d{4})",
-        total_pattern=r"(?i)\btotal\s+\$?\s*(\d+\.\d{2})",
-        bill_id_pattern=r"(?i)receipt#\s*([a-zA-Z0-9-]+)"
-    ),
-    ReceiptTemplate(
-        name="Costco",
-        vendor_pattern=r"(?i)costco",
-        date_pattern=r"(\d{2}/\d{2}/\d{4})",
-        total_pattern=r"(?i)total\s+owned\s+\$?\s*(\d+\.\d{2})",
-    ),
-    ReceiptTemplate(
-        name="Amazon",
-        vendor_pattern=r"(?i)amazon",
-        date_pattern=r"(?i)shipped on\s+(\w+\s+\d{1,2},\s+\d{4})",
-        total_pattern=r"(?i)grand total:\s*\$?\s*(\d+\.\d{2})",
-        bill_id_pattern=r"(?i)order #\s*([0-9-]{10,})",
-    ),
-    ReceiptTemplate(
-        name="Wirral School Shops",
-        vendor_pattern=r"(?i)wirral school shops",
-        date_pattern=r"(\d{4}-\d{2}-\d{2})",
-        total_pattern=r"(?i)total\s+amount\s+₹?\s*(\d+\.\d{2})",
-        tax_pattern=r"(?i)tax\s+₹?\s*(\d+\.\d{2})"
-    ),
-    ReceiptTemplate(
-        name="Melaka Layout",
-        vendor_pattern=r"(?i)melaka|maas",
-        total_pattern=r"(?i)grand\s+total\s*[:\-\s]*(\d+[.,]\d{2,3})",
-        subtotal_pattern=r"(?i)subtotal\s*[:\-\s]*(\d+[.,]\d{2,3})",
-    ),
-    # Generic fallback templates if needed
-]
+    # Fast path: already initialized
+    if _paddle_engine is not None:
+        return _paddle_engine
+
+    # If we already failed, don't retry indefinitely
+    if _paddle_init_failed:
+        raise PaddleOCRError(
+            f"PaddleOCR initialization previously failed: {_paddle_init_error}"
+        )
+
+    # Slow path: acquire lock and initialize
+    with _paddle_lock:
+        # Double-check after acquiring lock
+        if _paddle_engine is not None:
+            return _paddle_engine
+
+        if _paddle_init_failed:
+            raise PaddleOCRError(
+                f"PaddleOCR initialization previously failed: {_paddle_init_error}"
+            )
+
+        try:
+            from paddleocr import PaddleOCR
+        except ImportError as e:
+            _paddle_init_failed = True
+            _paddle_init_error = e
+            raise PaddleOCRError(
+                "PaddleOCR is not installed. Install with: pip install paddleocr"
+            ) from e
+
+        try:
+            _paddle_engine = PaddleOCR(
+                use_angle_cls=use_angle_cls,
+                lang=lang,
+                show_log=show_log,
+                use_gpu=use_gpu,
+            )
+        except Exception as e:
+            _paddle_init_failed = True
+            _paddle_init_error = e
+            raise PaddleOCRError(f"Failed to initialize PaddleOCR: {e}") from e
+
+    return _paddle_engine
 
 
-def get_matching_template(text: str) -> Optional[ReceiptTemplate]:
-    """Finds the first template that matches the vendor pattern in the text."""
-    text_lower = text.lower()
-    for tmpl in TEMPLATES:
-        # Standard regex match
-        if re.search(tmpl.vendor_pattern, text):
-            return tmpl
-        # Fuzzy fallback for known vendors (e.g. if 'Melaka' is read as 'MAAS')
-        if tmpl.name == "Melaka Layout":
-            if any(fuzzy in text_lower for fuzzy in ["maas", "mlaka", "melka", "meaka"]):
-                return tmpl
-    return None
+def reset_paddle_engine() -> None:
+    """
+    Reset the PaddleOCR engine singleton.
+
+    Call this if you need to reinitialize with different parameters
+    (e.g., different language) or if the engine becomes corrupted.
+    """
+    global _paddle_engine, _paddle_init_failed, _paddle_init_error
+    with _paddle_lock:
+        _paddle_engine = None
+        _paddle_init_failed = False
+        _paddle_init_error = None
+
+
+def extract_text_paddle(
+    pil_image: Image.Image,
+    lang: str = "en",
+    confidence_threshold: float = 0.0,
+) -> str:
+    """
+    Extract text from an image using PaddleOCR.
+
+    Args:
+        pil_image: Input PIL Image.
+        lang: Language code for OCR model.
+        confidence_threshold: Minimum confidence score (0-1) for text lines.
+            Lines below this threshold are discarded. 0 = keep all.
+
+    Returns:
+        Extracted text as a single string with newline-separated lines.
+        Returns empty string if no text is detected.
+
+    Raises:
+        PaddleOCRError: If OCR engine fails to initialize or inference fails.
+        ValueError: If input image is invalid.
+    """
+    if pil_image is None:
+        raise ValueError("Input image cannot be None")
+
+    # Ensure RGB for PaddleOCR
+    img_array = np.array(pil_image.convert("RGB"))
+
+    if img_array.size == 0:
+        return ""
+
+    engine = _get_paddle_engine(lang=lang)
+
+    try:
+        result = engine.ocr(img_array, cls=True)
+    except Exception as e:
+        raise PaddleOCRError(f"PaddleOCR inference failed: {e}") from e
+
+    if not result or not result[0]:
+        return ""
+
+    full_text: List[str] = []
+    for line in result[0]:
+        # line format: [[coords], (text, confidence)]
+        text, confidence = line[1][0], line[1][1]
+        if confidence_threshold > 0 and confidence < confidence_threshold:
+            continue
+        if text and text.strip():
+            full_text.append(text.strip())
+
+    return "\n".join(full_text)
+
+
+def extract_text_with_boxes(
+    pil_image: Image.Image,
+    lang: str = "en",
+) -> List[dict]:
+    """
+    Extract text with bounding box coordinates from an image.
+
+    Args:
+        pil_image: Input PIL Image.
+        lang: Language code.
+
+    Returns:
+        List of dicts with keys: 'text', 'confidence', 'box' (list of 4 points).
+    """
+    if pil_image is None:
+        raise ValueError("Input image cannot be None")
+
+    img_array = np.array(pil_image.convert("RGB"))
+    engine = _get_paddle_engine(lang=lang)
+
+    try:
+        result = engine.ocr(img_array, cls=True)
+    except Exception as e:
+        raise PaddleOCRError(f"PaddleOCR inference failed: {e}") from e
+
+    if not result or not result[0]:
+        return []
+
+    output = []
+    for line in result[0]:
+        box, (text, confidence) = line[0], line[1]
+        output.append({
+            "text": text.strip(),
+            "confidence": confidence,
+            "box": box,
+        })
+
+    return output
