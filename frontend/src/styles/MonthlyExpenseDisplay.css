@@ -1,0 +1,331 @@
+.monthly-expense-display {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 24px;
+  margin: 20px 0;
+  backdrop-filter: blur(10px);
+}
+
+.expense-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+  gap: 20px;
+}
+
+.header-left h3 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #F8FAFC;
+  margin: 0 0 8px 0;
+}
+
+.header-left p {
+  color: #94A3B8;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.view-toggle {
+  display: flex;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 4px;
+  gap: 4px;
+}
+
+.toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  color: #94A3B8;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #F8FAFC;
+}
+
+.toggle-btn.active {
+  background: linear-gradient(135deg, #8B5CF6, #3B82F6);
+  color: white;
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+}
+
+.chart-type-selector .chart-select {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #F8FAFC;
+  padding: 8px 16px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.chart-select:hover,
+.chart-select:focus {
+  border-color: rgba(139, 92, 246, 0.5);
+  background: rgba(139, 92, 246, 0.1);
+}
+
+.expense-content {
+  min-height: 400px;
+}
+
+/* Table Styles */
+.expense-table-container {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+.expense-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.expense-table th {
+  background: rgba(139, 92, 246, 0.1);
+  color: #F8FAFC;
+  font-weight: 600;
+  padding: 16px 12px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.expense-table td {
+  padding: 12px;
+  color: #E2E8F0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  vertical-align: middle;
+}
+
+.table-row {
+  transition: background-color 0.2s ease;
+}
+
+.table-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.month-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  color: #F8FAFC;
+}
+
+.total-spend {
+  font-weight: 600;
+  color: #8B5CF6;
+}
+
+.receipts-count {
+  text-align: center;
+  font-weight: 500;
+}
+
+.variance {
+  font-weight: 600;
+  text-align: right;
+}
+
+.variance.positive {
+  color: #10B981;
+}
+
+.variance.negative {
+  color: #EF4444;
+}
+
+/* Pie Chart Legend */
+.pie-legend {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.legend-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  justify-content: center;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+}
+
+.legend-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.legend-label {
+  color: #94A3B8;
+  font-weight: 500;
+}
+
+.legend-value {
+  color: #F8FAFC;
+  font-weight: 600;
+}
+
+/* Summary Stats */
+.expense-summary {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.summary-stats {
+  display: flex;
+  gap: 32px;
+  justify-content: center;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.stat-item svg {
+  color: #8B5CF6;
+}
+
+.stat-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #F8FAFC;
+  line-height: 1;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: #94A3B8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Chart Tooltips */
+.custom-tooltip {
+  background: rgba(30, 41, 59, 0.95) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 8px !important;
+  color: #F8FAFC !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3) !important;
+  backdrop-filter: blur(10px) !important;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .expense-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .header-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .summary-stats {
+    flex-direction: column;
+    gap: 16px;
+    align-items: center;
+  }
+
+  .stat-item {
+    width: 100%;
+    max-width: 300px;
+    justify-content: center;
+  }
+
+  .legend-items {
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .expense-table {
+    font-size: 0.75rem;
+  }
+
+  .expense-table th,
+  .expense-table td {
+    padding: 8px 6px;
+  }
+}
+
+@media (max-width: 480px) {
+  .monthly-expense-display {
+    padding: 16px;
+    margin: 10px 0;
+  }
+
+  .header-left h3 {
+    font-size: 1.25rem;
+  }
+
+  .view-toggle {
+    width: 100%;
+  }
+
+  .toggle-btn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .chart-type-selector {
+    width: 100%;
+    margin-top: 8px;
+  }
+
+  .chart-select {
+    width: 100%;
+  }
+}

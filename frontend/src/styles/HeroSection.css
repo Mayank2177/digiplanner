@@ -27,7 +27,7 @@
   border-radius: 99px;
   font-size: 0.8rem;
   font-weight: 600;
-  color: var(--neon-cyan);
+  color: var(--neon-violet);
   margin-bottom: 2rem;
   backdrop-filter: blur(10px);
   animation: badgePulse 2s ease-in-out infinite;
@@ -37,7 +37,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--neon-cyan);
+  background: var(--neon-violet);
   animation: dotBlink 1.5s ease-in-out infinite;
 }
 
@@ -78,7 +78,7 @@
   font-family: var(--font-mono);
   font-size: 2.2rem;
   font-weight: 700;
-  background: linear-gradient(135deg, var(--neon-violet), var(--neon-fuchsia));
+  background: linear-gradient(135deg, var(--neon-violet), var(--neon-cyan));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -114,10 +114,10 @@
   position: absolute;
   inset: 0;
   border-radius: 24px;
-  background: linear-gradient(145deg, rgba(139, 92, 246, 0.15), rgba(232, 121, 249, 0.08));
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(145deg, rgba(99, 102, 241, 0.15), rgba(20, 184, 166, 0.08));
+  border: 1px solid rgba(99, 102, 241, 0.2);
   backdrop-filter: blur(20px);
-  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  box-shadow: 0 25px 50px rgba(15, 15, 35, 0.4), inset 0 1px 0 rgba(99, 102, 241, 0.1);
   padding: 2rem;
   display: flex;
   flex-direction: column;
@@ -140,12 +140,12 @@
   width: 44px;
   height: 44px;
   border-radius: 12px;
-  background: linear-gradient(135deg, var(--neon-violet), var(--neon-fuchsia));
+  background: linear-gradient(135deg, var(--neon-violet), var(--neon-cyan));
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 1.3rem;
-  box-shadow: 0 8px 20px rgba(139, 92, 246, 0.3);
+  box-shadow: 0 8px 20px rgba(99, 102, 241, 0.4);
 }
 
 .card-title {
@@ -184,7 +184,7 @@
 .card-bar-fill {
   height: 100%;
   border-radius: 99px;
-  background: linear-gradient(90deg, var(--neon-violet), var(--neon-fuchsia));
+  background: linear-gradient(90deg, var(--neon-violet), var(--neon-cyan));
   animation: barGrow 2s var(--ease-out-expo) both;
   width: 78%;
 }
@@ -199,7 +199,7 @@
   position: absolute;
   font-size: 2rem;
   animation: floatBob 4s ease-in-out infinite;
-  filter: drop-shadow(0 0 20px rgba(139, 92, 246, 0.5));
+  filter: drop-shadow(0 0 20px rgba(99, 102, 241, 0.6));
 }
 
 .float-el:nth-child(1) { top: 10%; left: -10%; }
