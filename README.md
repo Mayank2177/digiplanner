@@ -29,49 +29,49 @@
 
 
 ## Results(1):
-* Simulation image
+* Simulation image:
 ![Project Screenshot](results/IMG-20260709-WA0006.jpg)
 
 
 
 ## Results(2):
-* Server result
+* Server result:
 ![Project Screenshot](results/IMG-20260709-WA0004.jpg)
 
 
 
 ## Results(3):
-* Server result
+* Landing Page:
 ![Project Screenshot](results/IMG-20260712-WA0002.jpg)
 
 
 ## Results(4):
-* Server result
+* SignIn/SignUp Page:
 ![Project Screenshot](results/IMG-20260712-WA0006.jpg)
 
 
 ## Results(5):
-* Server result
+* Upload receipt:
 ![Project Screenshot](results/IMG-20260712-WA0000.jpg)
 
 
 ## Results(6):
-* Server result
+* Dashboard Page:
 ![Project Screenshot](results/IMG-20260712-WA0005.jpg)
 
 
 ## Results(7):
-* Server result
+* Analytics Page:
 ![Project Screenshot](results/IMG-20260712-WA0007.jpg)
 
 
 ## Results(8):
-* Server result
+* Chat with Data:
 ![Project Screenshot](results/IMG-20260712-WA0004.jpg)
 
 ## Results(9):
-* Server result
-![Project Screenshot](results/IMG-20260712-WA0007.jpg)
+* ERP & API:
+![Project Screenshot](results/IMG-20260712-WA0001.jpg)
 
 
 
