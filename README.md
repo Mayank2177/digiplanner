@@ -142,28 +142,9 @@ docker run -p 3000:3000 digiplanner
 ### Results(9): ERP & API
 ![Project Screenshot](results/IMG-20260712-WA0001.jpg)
 
----
-
-## 📦 Project Structure
-```
-digiplanner/
-├── app/
-│   ├── templates/
-│   ├── static/
-│   ├── models/
-│   └── routes/
-├── config/
-├── requirements.txt
-├── .env
-└── README.md
-```
 
 ---
 
-## 🤝 Contributing
-Contributions are welcome! Please feel free to submit a Pull Request.
-
----
 
 ## 📄 License
 This project is licensed under the MIT License - see the LICENSE file for details.
@@ -171,4 +152,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ---
 
 ## 📧 Contact
-For any inquiries, please contact: [Your Contact Information]
+For any inquiries, please contact: @Mayank2177
