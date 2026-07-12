@@ -16,7 +16,7 @@ const CTASection = () => {
           <p className="cta-sub">
             Join 10,000+ businesses already using ReceiptVault. Start your free 14-day trial today.
           </p>
-          <Link to="/dashboard" className="btn btn-primary cta-btn">
+          <Link to="/signup" className="btn btn-primary cta-btn">
             Get Started for Free <ArrowRight size={20} />
           </Link>
         </div>

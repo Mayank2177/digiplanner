@@ -1,24 +1,68 @@
 /* ===== CSS VARIABLES ===== */
 :root {
-  --neon-violet: #8B5CF6;
-  --neon-fuchsia: #E879F9;
-  --neon-cyan: #22D3EE;
-  --neon-amber: #FBBF24;
-  --neon-rose: #FB7185;
-  --neon-emerald: #34D399;
-  --dark-0: #030014;
-  --dark-1: #0A0A1A;
-  --dark-2: #12122B;
-  --dark-3: #1A1A3E;
-  --glass-bg: rgba(255, 255, 255, 0.03);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-border-hover: rgba(255, 255, 255, 0.18);
-  --text-primary: #F8FAFC;
-  --text-secondary: #94A3B8;
-  --text-muted: #64748B;
+  /* New Modern Color Palette */
+  --neon-violet: #6366F1;     /* Indigo 500 */
+  --neon-fuchsia: #EC4899;    /* Pink 500 */
+  --neon-cyan: #06B6D4;       /* Cyan 500 */
+  --neon-amber: #F59E0B;      /* Amber 500 */
+  --neon-rose: #F43F5E;       /* Rose 500 */
+  --neon-emerald: #10B981;    /* Emerald 500 */
+  
+  /* Additional Modern Colors */
+  --neon-purple: #8B5CF6;     /* Purple 500 */
+  --neon-blue: #3B82F6;       /* Blue 500 */
+  --neon-teal: #14B8A6;       /* Teal 500 */
+  --neon-orange: #F97316;     /* Orange 500 */
+  
+  /* Compatible Variables for Dashboard */
+  --forest: #10B981;          /* Emerald 500 */
+  --teal: #14B8A6;           /* Teal 500 */
+  --base-0: #0F0F23;         /* Deep navy base */
+  --base-50: #1A1A2E;        /* Dark navy layer */
+  --base-100: #16213E;       /* Medium navy layer */
+  --base-200: #0F3460;       /* Accent navy layer */
+  --ink-100: #F1F5F9;        /* Slate 100 */
+  --ink-200: #E2E8F0;        /* Slate 200 */
+  --ink-300: #CBD5E1;        /* Slate 300 */
+  --ink-400: #94A3B8;        /* Slate 400 */
+  --rose: #F43F5E;           /* Rose 500 */
+  
+  /* Spacing Variables */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+  
+  /* Font Variables */
+  --font-sans: 'Space Grotesk', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  
+  /* Dark Theme Backgrounds */
+  --dark-0: #0F0F23;          /* Deep navy base */
+  --dark-1: #1A1A2E;          /* Dark navy layer */
+  --dark-2: #16213E;          /* Medium navy layer */
+  --dark-3: #0F3460;          /* Accent navy layer */
+  
+  /* Glass Effects */
+  --glass-bg: rgba(99, 102, 241, 0.05);
+  --glass-border: rgba(99, 102, 241, 0.12);
+  --glass-border-hover: rgba(99, 102, 241, 0.25);
+  
+  /* Text Colors */
+  --text-primary: #F1F5F9;    /* Slate 100 */
+  --text-secondary: #CBD5E1;  /* Slate 300 */
+  --text-muted: #64748B;      /* Slate 500 */
+  
+  /* Fonts */
   --font-display: 'Outfit', sans-serif;
   --font-body: 'Space Grotesk', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+  
+  /* Animations */
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
@@ -39,15 +83,23 @@ body {
 /* ===== SCROLLBAR ===== */
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-track { background: var(--dark-0); }
-::-webkit-scrollbar-thumb { background: linear-gradient(to bottom, var(--neon-violet), var(--neon-fuchsia)); border-radius: 99px; }
-::-webkit-scrollbar-thumb:hover { background: linear-gradient(to bottom, var(--neon-fuchsia), var(--neon-cyan)); }
+::-webkit-scrollbar-thumb { 
+  background: linear-gradient(to bottom, var(--neon-violet), var(--neon-cyan)); 
+  border-radius: 99px; 
+}
+::-webkit-scrollbar-thumb:hover { 
+  background: linear-gradient(to bottom, var(--neon-purple), var(--neon-teal)); 
+}
 
 /* ===== ANIMATIONS ===== */
 @keyframes orbFloat1 { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(60px, 40px) scale(1.1); } }
 @keyframes orbFloat2 { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-40px, -60px) scale(1.15); } }
 @keyframes orbFloat3 { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(30px, -50px) scale(0.9); } }
 @keyframes textGradient { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
-@keyframes badgePulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.2); } 50% { box-shadow: 0 0 20px 4px rgba(34, 211, 238, 0.1); } }
+@keyframes badgePulse { 
+  0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.2); } 
+  50% { box-shadow: 0 0 20px 4px rgba(99, 102, 241, 0.1); } 
+}
 @keyframes dotBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 @keyframes cardFloat { 0%, 100% { transform: translateY(0) rotateX(5deg) rotateY(-5deg); } 50% { transform: translateY(-15px) rotateX(8deg) rotateY(-8deg); } }
 @keyframes barGrow { from { width: 0; } to { width: 78%; } }
@@ -79,7 +131,7 @@ body {
 
 /* ===== UTILITY CLASSES ===== */
 .gradient-text {
-  background: linear-gradient(135deg, var(--neon-violet) 0%, var(--neon-fuchsia) 50%, var(--neon-cyan) 100%);
+  background: linear-gradient(135deg, var(--neon-violet) 0%, var(--neon-cyan) 50%, var(--neon-teal) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-size: 200% auto;

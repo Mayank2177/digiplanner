@@ -33,7 +33,7 @@ const HeroSection = () => {
 
           <ScrollReveal delay={2}>
             <div className="hero-actions">
-              <Link to="/dashboard" className="btn btn-primary hero-btn">
+              <Link to="/signup" className="btn btn-primary hero-btn">
                 Start Free Trial <ArrowRight size={18} />
               </Link>
               <button className="btn btn-ghost hero-btn">

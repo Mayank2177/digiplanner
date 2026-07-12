@@ -37,13 +37,13 @@ const Navbar = () => {
           <button onClick={() => scrollTo('features')} className="nav-link">Features</button>
           <button onClick={() => scrollTo('how')} className="nav-link">How It Works</button>
           <Link to="/dashboard" className="nav-link">Dashboard</Link>
-          <button onClick={() => scrollTo('cta')} className="nav-link">Get Started</button>
+          <Link to="/signup" className="nav-link">Sign Up</Link>
         </div>
       )}
 
       <div className="nav-cta">
-        <Link to="/dashboard" className="btn btn-ghost">Sign In</Link>
-        <Link to="/dashboard" className="btn btn-primary">Get Started</Link>
+        <Link to="/login" className="btn btn-ghost">Sign In</Link>
+        <Link to="/signup" className="btn btn-primary">Sign Up</Link>
         <button className="mobile-toggle" onClick={() => setMobileOpen(!mobileOpen)}>
           {mobileOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
