@@ -76,41 +76,27 @@ venv\Scripts\activate
 python3 -m venv venv
 source venv/bin/activate
 ```
-
-### Step 3: Install Dependencies
+### Step 3: Move to the frontend folder
 ```bash
-pip install -r requirements.txt
+cd frontend
 ```
 
-### Step 4: Configure Environment Variables
-Create a `.env` file in the project root directory and add the following:
-```
-DATABASE_URL=your_database_url
-SECRET_KEY=your_secret_key
-DEBUG=True
-FLASK_ENV=development
-```
-
-### Step 5: Initialize the Database
+### Step 4: Install Dependencies
 ```bash
-python manage.py db init
-python manage.py db migrate
-python manage.py db upgrade
+npm install
 ```
 
-### Step 6: Run the Application
+### Step 5: Run the Application
 ```bash
 # For development
-python app.py
+npm run dev
 
-# Or using Flask CLI
-flask run
 ```
 
-The application will be available at `http://localhost:5000`
+The application will be available at `http://localhost:3000`
 
-### Step 7: Access the Application
-- Open your browser and navigate to `http://localhost:5000`
+### Step 6: Access the Application
+- Open your browser and navigate to `http://localhost:3000`
 - Sign up for a new account or log in
 - Start uploading receipts and invoices
 
@@ -121,8 +107,8 @@ pytest
 
 ### Optional: Run with Docker
 ```bash
-docker build -t digiplanner .
-docker run -p 5000:5000 digiplanner
+docker build -t digiplanner.
+docker run -p 3000:3000 digiplanner
 ```
 
 ---
