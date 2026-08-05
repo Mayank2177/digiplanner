@@ -1,0 +1,70 @@
+Junying Chen, Chi Gui, Ruyi Ouyang, Anningzhe Gao, Shunian Chen, Guiming Hardy Chen, Xidong Wang, Zhenyang Cai, Ke Ji, Xiang Wan, and 1 others. 2024a. Towards injecting medical visual knowledge into mul-timodal llms at scale. In Proceedings of the 2024 conference on empirical methods in natural language processing, pages 7346–7370. (“Towards Injecting Medical Visual Knowledge into Multimodal”) 
+
+
+
+Xupeng Chen, Binbin Shi, Chenqian Le, Qifu Yin, Lang Lin, Haowei Ni, Ran Gong, and Panfeng Li. 2026. Auditing frontier vision-language models for trustworthy medical vqa: Grounding failures, for-mat collapse, and domain adaptation. arXiv preprint arXiv:2604.27720. 
+
+Zekai Chen, Arda Pekis, and Kevin Brown. 2024b. Ad-vancing high resolution vision-language models in biomedicine. arXiv preprint arXiv:2406.09454. 
+
+Tim Dettmers, Mike Lewis, Younes Belkada, and Luke Zettlemoyer. 2022. 8-bit optimizers via block-wise quantization. International Conference on Learning Representations (ICLR). 
+Shilpa Devalal and A Karthikeyan. 2018. Lora technology-an overview. “In 2018 second interna-tional conference on electronics, communication and aerospace technology (ICECA), pages 284–290.” (“LAG: Logic-Augmented Generation from a Cartesian Perspective”) IEEE. 
+“Xuehai He, Yichen Zhang, Luntian Mou, Eric Xing, and Pengtao Xie.” (“MedAgentsBench: Benchmarking Thinking Models and Agent Frameworks for ...”) 2020. Pathvqa: 30000+ questions for medical visual question answering. arXiv preprint arXiv:2003.10286. 
+Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. 2022. Lora: Low-rank adaptation of large language models. In International Conference on Learning Representations (ICLR). 
+“Xinyue Hu, Lin Gu, Kazuma Kobayashi, Liangchen Liu, Mengliang Zhang, Tatsuya Harada, Ronald M Summers, and Yingying Zhu.” (“X-PCR: A Benchmark for Cross-modality Progressive Clinical Reasoning in ...”) (“X-PCR: A Benchmark for Cross-modality Progressive Clinical Reasoning in ...”) 2024. “Interpretable medical image visual question answering via multi-modal relationship graph learning.” (“GitHub - Holipori/Medical-CXR-VQA”) Medical Image Analysis, 97:103279. 
+Zixuan Huang, Zhihong Zhu, Xiaolong Liu, Yanchao Hao, Manman Zhang, Zheng Wei, Bowen Xing, Xian Wu, Ye Li, Fen Miao, and 1 others. 2026. Beyond surface features: Advancing medical vision-language alignment via dynamic evidence-guided preference optimization. (“Beyond Surface Features: Advancing Medical Vision-Language Alignment ...”)  In Proceedings of the 64th Annual 
+Meeting of the Association for Computational Lin- 737 
+guistics (Volume 1: Long Papers), pages 26125– 738 
+26137. 739 
+Jason J Lau, Soumya Gayen, Asma Ben Abacha, and 740 
+Dina Demner-Fushman. 2018. A dataset of clini- 741 
+cally generated visual questions and answers about 742 
+radiology images. Scientific data, 5(1):180251. 743 
+Chunyuan Li, Cliff Wong, Sheng Zhang, Naoto 744 
+Usuyama, Haotian Liu, Jianwei Yang, Tristan Nau- 745 
+mann, Hoifung Poon, and Jianfeng Gao. 2023. Llava- 746 
+med: Training a large language-and-vision assistant 747 
+for biomedicine in one day. Advances in Neural In- 748 
+formation Processing Systems, 36:28541–28564. 749 
+Qingqiu Li, Zihang Cui, Seongsu Bae, Jilan Xu, Run- 750 
+tian Yuan, Yuejie Zhang, Rui Feng, Quanli Shen, 751 
+Xiaobo Zhang, Shang Gao, and 1 others. 2026. Aor: 752 
+Anatomical ontology-guided reasoning for medical 753 
+large multimodal model in chest x-ray interpretation. 754 
+Advances in Neural Information Processing Systems, 755 
+38:19331–19371. 756 
+Bo Liu, Li-Ming Zhan, Li Xu, Lin Ma, Yan Yang, and 757 
+Xiao-Ming Wu. 2021. Slake: A semantically-labeled 758 
+knowledge-enhanced dataset for medical visual ques- 759 
+tion answering. In 2021 IEEE 18th international sym- 760 
+posium on biomedical imaging (ISBI), pages 1650– 761 
+1654. IEEE. 762 
+Haotian Liu, Chunyuan Li, Qingyang Wu, and Yong Jae 763 
+Lee. 2023. Visual instruction tuning. Advances in 764 
+Neural Information Processing Systems, 36. 765 
+Ilya Loshchilov and Frank Hutter. 2019. Decoupled 766 
+weight decay regularization. In International Confer- 767 
+ence on Learning Representations (ICLR). 768 
+Qwen Team. 2025. Qwen2.5-vl technical report. arXiv 769 
+preprint arXiv:2502.13923. 770 
+Unsloth AI. 2024.  Unsloth: Fast and efficient fine- 771 
+tuning of large language models. https:// 772 
+github.com/unslothai/unsloth. GitHub 773 
+repository. 774 
+Yinan Wu, Jihang Jin, Xuhao Bao, Weiyan Zhang, Han- 775 
+jing Yan, Tong Ruan, and ChunMing Wang. 2026. 776 
+Medkinstruct: A multimodal knowledge graph based 777 
+framework for multi-hop and hard-negative instruc- 778 
+tion data synthesis in medvqa. In Findings of the As- 779 
+sociation for Computational Linguistics: ACL 2026, 780 
+pages 27935–27947. 781 
+Eric Zelikman, Yuhuai Wu, Jesse Mu, and Noah D. 782 
+Goodman. 2022. Star: Self-taught reasoner boot- 783 
+strapping reasoning with reasoning.  Advances in 784 
+Neural Information Processing Systems, 35:15476– 785 
+15488. 786 
+Xiaoman Zhang, Chaoyi Wu, Ziheng Zhao, Weix- 787 
+iong Lin, Ya Zhang, Yanfeng Wang, and Weidi 788 
+Xie. 2023. Pmc-vqa: Visual instruction tuning for 789 
+medical visual question answering. arXiv preprint 790 
+arXiv:2305.10415. 791 
+ 
