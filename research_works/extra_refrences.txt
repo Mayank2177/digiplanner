@@ -1,0 +1,42 @@
+eExpense: A Smart Approach to Track Everyday Expense
+https://easychair.org/publications/preprint/73S7/open
+
+An NFC based innovation for paperless retail transactions and digital receipts management
+https://ieeexplore.ieee.org/document/7443622
+
+
+Electronic receipts using near-field communication protocol as a solution for thermal paper receipts
+https://ieeexplore.ieee.org/document/9223257
+
+
+End to End Invoice Processing Application Based on Key Fields Extraction
+
+https://ieeexplore.ieee.org/document/9834945
+
+
+
+
+An electronic invoicing system
+https://ieeexplore.ieee.org/document/5969922/
+ 
+ 
+Refining the Pattern-Based Reference Model for Electronic Invoices by Incorporating Threats
+https://ieeexplore.ieee.org/document/5438037
+
+
+-------------------------------------------------------------------------++++++++++++++++++++++------------------------------------------------
+
+
+
+
+Personalized Real-Time Financial Expense Categorization AI Using OCR and Retrieval-Augmented Generation
+https://ieeexplore.ieee.org/document/11476659
+
+
+
+
+Intelligent Invoice Verification and Overbilling Detection Using OCR and LightGBM
+https://ieeexplore.ieee.org/document/11541753
+
+
+
