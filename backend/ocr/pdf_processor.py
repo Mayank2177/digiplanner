@@ -113,10 +113,8 @@ def pdf_to_images(
     except ImportError:
         raise ImportError(
             "PDF processing requires either 'pdf2image' (with poppler) "
-            "or 'PyMuPDF' (fitz). Install one:
-"
-            "  pip install pdf2image  # also install poppler-utils
-"
+            "or 'PyMuPDF' (fitz). Install one:\n"
+            "  pip install pdf2image  # also install poppler-utils\n"
             "  pip install PyMuPDF"
         )
     except Exception as e:

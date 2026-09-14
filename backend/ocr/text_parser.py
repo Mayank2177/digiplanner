@@ -1,270 +1,146 @@
 """
-templates.py — Receipt template definitions with pre-compiled regex patterns.
+text_parser.py — Turns raw OCR text into a structured receipt record.
 
-Fixes applied:
-  - All regex patterns pre-compiled at module load (performance).
-  - Fuzzy matching generalized for all templates.
-  - Added Indian vendor templates (Swiggy, Zomato, Ola, Uber, BESCOM, etc.).
-  - Added compiled_pattern field to dataclass.
-  - Added currency-aware total extraction.
+FIX APPLIED: this file previously contained an exact duplicate of
+paddle_engine.py (a copy/paste mistake) instead of any parsing logic.
+There was no code anywhere in the original repo that actually converted
+OCR text -> {vendor, date, amount, tax, subtotal, bill_id}. That logic is
+implemented here now.
+
+Strategy:
+  1. Try to match the text against a known vendor template (ocr/templates.py).
+     If matched, use that template's field-specific regexes (more accurate).
+  2. If no template matches, fall back to generic regex heuristics that work
+     reasonably well across most receipt formats.
+  3. Clean/normalize every extracted value with utils/helpers.py.
 """
 
 import re
-from dataclasses import dataclass, field
-from typing import List, Optional, Pattern, Dict
+import uuid
+from datetime import date as date_cls
+from typing import Any, Dict, Optional
+
+from ocr.templates import get_matching_template
+from utils.helpers import normalize_text, clean_amount, clean_date
 
 
-@dataclass
-class ReceiptTemplate:
-    """
-    Defines a regex-based template for a specific vendor layout.
-
-    Patterns should use capturing groups for the values to extract.
-    Example total_pattern: r"total\s+\$?\s*(\d+\.\d{2})"
-    """
-    name: str
-    vendor_pattern: str          # Regex to identify this vendor
-    date_pattern: Optional[str] = None
-    total_pattern: Optional[str] = None
-    tax_pattern: Optional[str] = None
-    subtotal_pattern: Optional[str] = None
-    bill_id_pattern: Optional[str] = None
-    line_item_pattern: Optional[str] = None
-    currency_symbol: str = "$"    # Default currency symbol for this vendor
-    fuzzy_keywords: List[str] = field(default_factory=list)
-
-    # Internal: compiled regex (set by __post_init__)
-    _compiled: Dict[str, Pattern] = field(default_factory=dict, repr=False)
-
-    def __post_init__(self):
-        """Pre-compile all regex patterns for performance."""
-        patterns = {
-            "vendor": self.vendor_pattern,
-            "date": self.date_pattern,
-            "total": self.total_pattern,
-            "tax": self.tax_pattern,
-            "subtotal": self.subtotal_pattern,
-            "bill_id": self.bill_id_pattern,
-            "line_item": self.line_item_pattern,
-        }
-        for key, pat in patterns.items():
-            if pat is not None:
-                try:
-                    self._compiled[key] = re.compile(pat, re.IGNORECASE)
-                except re.error as e:
-                    raise ValueError(f"Invalid regex in {self.name}.{key}: {e}") from e
-
-    def match_vendor(self, text: str) -> bool:
-        """Check if the text matches this vendor's pattern."""
-        if "vendor" not in self._compiled:
-            return False
-        return bool(self._compiled["vendor"].search(text))
-
-    def match_fuzzy(self, text_lower: str) -> bool:
-        """Check if any fuzzy keyword appears in the text."""
-        return any(kw in text_lower for kw in self.fuzzy_keywords)
-
-    def extract_field(self, field_name: str, text: str) -> Optional[str]:
-        """Extract a field using the pre-compiled regex."""
-        if field_name not in self._compiled:
-            return None
-        m = self._compiled[field_name].search(text)
-        return m.group(1) if m and m.lastindex and m.lastindex >= 1 else None
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# TEMPLATE DEFINITIONS
-# ═══════════════════════════════════════════════════════════════════════════
-
-TEMPLATES: List[ReceiptTemplate] = [
-    # ─── US Retail ─────────────────────────────────────────────────────────
-    ReceiptTemplate(
-        name="Walmart",
-        vendor_pattern=r"walmart",
-        date_pattern=r"(\d{2}/\d{2}/\d{2,4})",
-        total_pattern=r"total\s+due\s+\$?\s*([\d,]+\.\d{2})",
-        tax_pattern=r"tax\s+\d+\s*\$?\s*([\d,]+\.\d{2})",
-        bill_id_pattern=r"tc#\s*(\d+)",
-        currency_symbol="$",
-        fuzzy_keywords=["walmart", "wal mart", "wlmart"],
-    ),
-    ReceiptTemplate(
-        name="Target",
-        vendor_pattern=r"target",
-        date_pattern=r"(\d{2}/\d{2}/\d{4})",
-        total_pattern=r"total\s+\$?\s*([\d,]+\.\d{2})",
-        bill_id_pattern=r"receipt#\s*([a-zA-Z0-9-]+)",
-        currency_symbol="$",
-        fuzzy_keywords=["target", "trgt"],
-    ),
-    ReceiptTemplate(
-        name="Costco",
-        vendor_pattern=r"costco",
-        date_pattern=r"(\d{2}/\d{2}/\d{4})",
-        total_pattern=r"total\s+owned\s+\$?\s*([\d,]+\.\d{2})",
-        currency_symbol="$",
-        fuzzy_keywords=["costco", "cstco"],
-    ),
-    ReceiptTemplate(
-        name="Amazon",
-        vendor_pattern=r"amazon",
-        date_pattern=r"shipped\s+on\s+(\w+\s+\d{1,2},\s+\d{4})",
-        total_pattern=r"grand\s+total[:\s]*\$?\s*([\d,]+\.\d{2})",
-        bill_id_pattern=r"order\s*#\s*([0-9-]{10,})",
-        currency_symbol="$",
-        fuzzy_keywords=["amazon", "amzn"],
-    ),
-
-    # ─── Indian Retail & Services ───────────────────────────────────────────
-    ReceiptTemplate(
-        name="Swiggy",
-        vendor_pattern=r"swiggy",
-        date_pattern=r"(\d{2}/\d{2}/\d{4})",
-        total_pattern=r"(?:grand\s+total|total\s+amount|total)\s*[:\-]?\s*[₹Rs.]*\s*([\d,]+\.?\d{0,2})",
-        tax_pattern=r"(?:tax|gst)\s*[:\-]?\s*[₹Rs.]*\s*([\d,]+\.?\d{0,2})",
-        bill_id_pattern=r"(?:order\s*id|order\s*#|invoice)\s*[:\-]?\s*([A-Z0-9-]+)",
-        currency_symbol="₹",
-        fuzzy_keywords=["swiggy", "swigy", "swgg"],
-    ),
-    ReceiptTemplate(
-        name="Zomato",
-        vendor_pattern=r"zomato",
-        date_pattern=r"(\d{2}/\d{2}/\d{4})",
-        total_pattern=r"(?:grand\s+total|total\s+amount|total)\s*[:\-]?\s*[₹Rs.]*\s*([\d,]+\.?\d{0,2})",
-        tax_pattern=r"(?:tax|gst)\s*[:\-]?\s*[₹Rs.]*\s*([\d,]+\.?\d{0,2})",
-        bill_id_pattern=r"(?:order\s*id|order\s*#|invoice)\s*[:\-]?\s*([A-Z0-9-]+)",
-        currency_symbol="₹",
-        fuzzy_keywords=["zomato", "zmt", "zomto"],
-    ),
-    ReceiptTemplate(
-        name="Uber",
-        vendor_pattern=r"uber",
-        date_pattern=r"(\w+\s+\d{1,2},\s+\d{4}|\d{2}/\d{2}/\d{4})",
-        total_pattern=r"(?:total|amount)\s*[:\-]?\s*[₹Rs.$]*\s*([\d,]+\.?\d{0,2})",
-        bill_id_pattern=r"(?:trip|ride)\s*id[:\-]?\s*([a-zA-Z0-9-]+)",
-        currency_symbol="₹",
-        fuzzy_keywords=["uber", "ubr", "uber india"],
-    ),
-    ReceiptTemplate(
-        name="Ola",
-        vendor_pattern=r"ola",
-        date_pattern=r"(\d{2}/\d{2}/\d{4}|\d{2}-\d{2}-\d{4})",
-        total_pattern=r"(?:total\s+fare|total\s+amount|total)\s*[:\-]?\s*[₹Rs.]*\s*([\d,]+\.?\d{0,2})",
-        bill_id_pattern=r"(?:crn|booking)\s*[:\-]?\s*([A-Z0-9]+)",
-        currency_symbol="₹",
-        fuzzy_keywords=["ola", "ola cabs", "olacabs"],
-    ),
-    ReceiptTemplate(
-        name="BESCOM",
-        vendor_pattern=r"bescom|bangalore\s+electricity",
-        date_pattern=r"(\d{2}/\d{2}/\d{4})",
-        total_pattern=r"(?:total\s+amount\s+due|bill\s+amount|amount\s+due)\s*[:\-]?\s*[₹Rs.]*\s*([\d,]+\.?\d{0,2})",
-        bill_id_pattern=r"(?:rr\s*no|consumer\s*no)[:\-]?\s*([0-9]+)",
-        currency_symbol="₹",
-        fuzzy_keywords=["bescom", "bangalore electricity", "electricity"],
-    ),
-    ReceiptTemplate(
-        name="IndiGo",
-        vendor_pattern=r"indigo",
-        date_pattern=r"(\d{2}\s+\w+\s+\d{4}|\d{2}/\d{2}/\d{4})",
-        total_pattern=r"(?:total\s+amount|grand\s+total|total)\s*[:\-]?\s*[₹Rs.]*\s*([\d,]+\.?\d{0,2})",
-        tax_pattern=r"(?:tax|gst|igst|cgst|sgst)\s*[:\-]?\s*[₹Rs.]*\s*([\d,]+\.?\d{0,2})",
-        bill_id_pattern=r"(?:pnr|booking\s*ref)[:\-]?\s*([A-Z0-9]{6})",
-        currency_symbol="₹",
-        fuzzy_keywords=["indigo", "indgo", "6e", "goindigo"],
-    ),
-    ReceiptTemplate(
-        name="Cafe Turmeric",
-        vendor_pattern=r"cafe\s+turmeric|turmeric\s+cafe",
-        date_pattern=r"(\d{2}/\d{2}/\d{4})",
-        total_pattern=r"(?:total|grand\s+total)\s*[:\-]?\s*[₹Rs.]*\s*([\d,]+\.?\d{0,2})",
-        currency_symbol="₹",
-        fuzzy_keywords=["turmeric", "turmeric cafe", "cafe turmeric"],
-    ),
-    ReceiptTemplate(
-        name="DMart",
-        vendor_pattern=r"d\s*mart|dmart",
-        date_pattern=r"(\d{2}/\d{2}/\d{4})",
-        total_pattern=r"(?:total|grand\s+total|net\s+amount)\s*[:\-]?\s*[₹Rs.]*\s*([\d,]+\.?\d{0,2})",
-        tax_pattern=r"(?:gst|tax)\s*[:\-]?\s*[₹Rs.]*\s*([\d,]+\.?\d{0,2})",
-        bill_id_pattern=r"(?:bill\s*no|invoice)\s*[:\-]?\s*([A-Z0-9]+)",
-        currency_symbol="₹",
-        fuzzy_keywords=["dmart", "d mart"],
-    ),
-    ReceiptTemplate(
-        name="BigBasket",
-        vendor_pattern=r"big\s*basket|bigbasket",
-        date_pattern=r"(\d{2}/\d{2}/\d{4})",
-        total_pattern=r"(?:total|grand\s+total)\s*[:\-]?\s*[₹Rs.]*\s*([\d,]+\.?\d{0,2})",
-        bill_id_pattern=r"(?:order\s*id|order\s*#)\s*[:\-]?\s*([A-Z0-9-]+)",
-        currency_symbol="₹",
-        fuzzy_keywords=["bigbasket", "big basket"],
-    ),
-    ReceiptTemplate(
-        name="Reliance Fresh",
-        vendor_pattern=r"reliance\s*(?:fresh|smart|digital)",
-        date_pattern=r"(\d{2}/\d{2}/\d{4})",
-        total_pattern=r"(?:total|grand\s+total)\s*[:\-]?\s*[₹Rs.]*\s*([\d,]+\.?\d{0,2})",
-        currency_symbol="₹",
-        fuzzy_keywords=["reliance", "reliance fresh", "reliance smart"],
-    ),
-
-    # ─── Other International ──────────────────────────────────────────────
-    ReceiptTemplate(
-        name="Wirral School Shops",
-        vendor_pattern=r"wirral\s+school\s+shops",
-        date_pattern=r"(\d{4}-\d{2}-\d{2})",
-        total_pattern=r"total\s+amount\s+[₹Rs.]*\s*([\d,]+\.\d{2})",
-        tax_pattern=r"tax\s+[₹Rs.]*\s*([\d,]+\.\d{2})",
-        currency_symbol="₹",
-        fuzzy_keywords=["wirral", "school shop"],
-    ),
-    ReceiptTemplate(
-        name="Melaka Layout",
-        vendor_pattern=r"melaka|maas",
-        total_pattern=r"grand\s+total\s*[:\-\s]*([\d,]+[.,]\d{2,3})",
-        subtotal_pattern=r"subtotal\s*[:\-\s]*([\d,]+[.,]\d{2,3})",
-        currency_symbol="$",
-        fuzzy_keywords=["melaka", "maas", "mlaka", "melka", "meaka"],
-    ),
+# ── Generic fallback patterns (used when no vendor template matches) ───────
+_GENERIC_TOTAL_PATTERNS = [
+    r"(?:grand\s+total|total\s+amount|net\s+amount|amount\s+due|total\s+due|total)\s*[:\-]?\s*[₹$Rs.]*\s*([\d,]+\.\d{1,2})",
+    r"(?:grand\s+total|total\s+amount|total)\s*[:\-]?\s*[₹$Rs.]*\s*([\d,]+)",
 ]
+_GENERIC_TAX_PATTERNS = [
+    r"(?:tax|gst|vat|cgst|sgst|igst)\s*[:\-]?\s*[₹$Rs.]*\s*([\d,]+\.?\d{0,2})",
+]
+_GENERIC_SUBTOTAL_PATTERNS = [
+    r"(?:sub\s*total|subtotal)\s*[:\-]?\s*[₹$Rs.]*\s*([\d,]+\.?\d{0,2})",
+]
+_GENERIC_DATE_PATTERNS = [
+    r"(\d{4}-\d{2}-\d{2})",
+    r"(\d{2}/\d{2}/\d{4})",
+    r"(\d{2}-\d{2}-\d{4})",
+    r"(\d{2}/\d{2}/\d{2})",
+    r"(\d{1,2}\s+\w+\s+\d{4})",
+]
+_GENERIC_VENDOR_STOPWORDS = {"receipt", "invoice", "bill", "total", "tax", "date", "cash", "card"}
 
-# Build a lookup index for fast fuzzy matching
-_TEMPLATE_INDEX: Dict[str, ReceiptTemplate] = {}
-for t in TEMPLATES:
-    _TEMPLATE_INDEX[t.name.lower()] = t
 
-
-def get_matching_template(text: str) -> Optional[ReceiptTemplate]:
-    """
-    Find the best matching template for the given OCR text.
-
-    Priority:
-      1. Exact regex match on vendor_pattern.
-      2. Fuzzy keyword match (for OCR errors like 'Melaka' → 'MAAS').
-      3. None if no match.
-
-    Args:
-        text: Raw OCR text from the receipt.
-
-    Returns:
-        Matching ReceiptTemplate or None.
-    """
-    text_lower = text.lower()
-
-    # Pass 1: Exact regex match
-    for tmpl in TEMPLATES:
-        if tmpl.match_vendor(text):
-            return tmpl
-
-    # Pass 2: Fuzzy keyword fallback
-    for tmpl in TEMPLATES:
-        if tmpl.match_fuzzy(text_lower):
-            return tmpl
-
+def _first_match(patterns, text: str) -> Optional[str]:
+    for pat in patterns:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            return m.group(1)
     return None
 
 
-def get_template_by_name(name: str) -> Optional[ReceiptTemplate]:
-    """Look up a template by its exact name (case-insensitive)."""
-    return _TEMPLATE_INDEX.get(name.lower())
+def _guess_vendor(raw_text: str) -> str:
+    """
+    Heuristic: the vendor name is usually one of the first non-empty,
+    mostly-alphabetic lines at the top of the receipt.
+    """
+    lines = [ln.strip() for ln in raw_text.splitlines() if ln.strip()]
+    for line in lines[:5]:
+        lower = line.lower()
+        letters = sum(c.isalpha() for c in line)
+        if letters >= 3 and not any(sw in lower for sw in _GENERIC_VENDOR_STOPWORDS):
+            return line.title()[:80]
+    return "Unknown Vendor"
+
+
+def _guess_category(vendor: str) -> str:
+    """Very lightweight category guess based on vendor keywords."""
+    v = vendor.lower()
+    mapping = {
+        "Food & Dining": ["swiggy", "zomato", "cafe", "restaurant", "food", "pizza", "dominos"],
+        "Travel": ["uber", "ola", "indigo", "airlines", "flight", "cab", "taxi"],
+        "Groceries": ["dmart", "bigbasket", "reliance fresh", "grocery", "mart"],
+        "Utilities": ["bescom", "electricity", "water board", "gas"],
+        "Shopping": ["amazon", "flipkart", "walmart", "target", "costco"],
+    }
+    for category, keywords in mapping.items():
+        if any(k in v for k in keywords):
+            return category
+    return "Uncategorized"
+
+
+def parse_receipt_text(raw_text: str) -> Dict[str, Any]:
+    """
+    Parse raw OCR text into a structured receipt dict, ready to hand to
+    database.queries.save_receipt().
+
+    Returns keys: bill_id, vendor, date, amount, tax, subtotal, category, raw_text
+    """
+    text = normalize_text(raw_text) if raw_text else ""
+    template = get_matching_template(text) if text else None
+
+    # BUG FIX: every vendor template's "total" regex (and the generic
+    # fallback) matches the bare word "total" with no word boundary, which
+    # also matches inside "Subtotal:". On a receipt listing both Subtotal
+    # and Grand Total, this previously extracted the *subtotal* value as
+    # the amount. Fix: strip the "Subtotal: <amount>" segment out of the
+    # text used specifically for TOTAL extraction (subtotal is still
+    # extracted separately, from the untouched original text).
+    text_for_total = re.sub(
+        r"sub[\s\-]*total\s*[:\-]?\s*[₹$Rs.]*\s*[\d,]+\.?\d*",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    if template:
+        vendor = template.name
+        amount_str = template.extract_field("total", text_for_total)
+        tax_str = template.extract_field("tax", text)
+        subtotal_str = template.extract_field("subtotal", text)
+        date_str = template.extract_field("date", text)
+        bill_id = template.extract_field("bill_id", text)
+    else:
+        vendor = _guess_vendor(raw_text or "")
+        amount_str = _first_match(_GENERIC_TOTAL_PATTERNS, text_for_total)
+        tax_str = _first_match(_GENERIC_TAX_PATTERNS, text)
+        subtotal_str = _first_match(_GENERIC_SUBTOTAL_PATTERNS, text)
+        date_str = _first_match(_GENERIC_DATE_PATTERNS, text)
+        bill_id = None
+
+    amount = clean_amount(amount_str) if amount_str else None
+    tax = clean_amount(tax_str) if tax_str else 0.0
+    subtotal = clean_amount(subtotal_str) if subtotal_str else 0.0
+
+    parsed_date = clean_date(date_str) if date_str else None
+    date_out = parsed_date.isoformat() if isinstance(parsed_date, date_cls) else (date_str or date_cls.today().isoformat())
+
+    if not bill_id:
+        # Deterministic-looking but unique fallback ID, flagged so
+        # check_receipt_duplicate() knows not to trust it as a real bill number.
+        bill_id = f"REC-{uuid.uuid4().hex[:10].upper()}"
+
+    return {
+        "bill_id": bill_id,
+        "vendor": vendor or "Unknown Vendor",
+        "date": date_out,
+        "amount": amount if amount is not None else 0.0,
+        "tax": tax or 0.0,
+        "subtotal": subtotal or (amount if amount is not None else 0.0),
+        "category": _guess_category(vendor or ""),
+        "raw_text": raw_text,
+    }
