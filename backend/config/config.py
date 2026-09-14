@@ -1,10 +1,14 @@
-
 import os
+import platform
+from dotenv import load_dotenv
+
+load_dotenv()  # loads variables from a .env file in the backend/ folder if present
 
 # =========================================================
-# APPLICATION CONFIGURATION
+# APPLICATION
 # =========================================================
-APP_TITLE = "Receipt Vault & Analyzer"
+APP_TITLE = os.getenv("APP_TITLE", "Receipt Vault & Analyzer")
+APP_VERSION = "2.0.0"
 
 # =========================================================
 # BASE DIRECTORY
@@ -15,20 +19,54 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # DATABASE CONFIGURATION (SQLite)
 # =========================================================
 DATA_DIR = os.path.join(BASE_DIR, "data")
-DB_PATH = os.path.join(DATA_DIR, "receipts.db")
 os.makedirs(DATA_DIR, exist_ok=True)
+DB_PATH = os.getenv("DB_PATH", os.path.join(DATA_DIR, "receipts.db"))
+
+# =========================================================
+# AUTH / SECURITY
+# =========================================================
+# IMPORTANT: set a real, random secret in your .env in production.
+# e.g. generate one with: python -c "import secrets; print(secrets.token_hex(32))"
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-only-insecure-secret-change-me")
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "1440"))  # 24 hours
+
+# =========================================================
+# CORS — allowed frontend origins
+# =========================================================
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3000"
+    ).split(",")
+    if origin.strip()
+]
 
 # =========================================================
 # OCR CONFIGURATION
 # =========================================================
-TESSERACT_PATH = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-POPPLER_PATH = r"C:\Users\p.pranitha\Downloads\Release-25.12.0-0\poppler-25.12.0\Library\bin"
+# Only needed on Windows if Tesseract/Poppler aren't on PATH.
+# Set these in your .env file — never hardcode a personal machine path.
+TESSERACT_PATH = os.getenv("TESSERACT_PATH")   # e.g. C:\Program Files\Tesseract-OCR\tesseract.exe
+POPPLER_PATH = os.getenv("POPPLER_PATH")       # e.g. C:\poppler-25.12.0\Library\bin
+OCR_LANG = os.getenv("OCR_LANG", "en")
+OCR_ENGINE = os.getenv("OCR_ENGINE", "auto")   # "auto" | "paddle" | "tesseract"
+
+if platform.system() == "Windows" and TESSERACT_PATH:
+    try:
+        import pytesseract
+        pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
+    except ImportError:
+        pass
 
 # =========================================================
 # FILE UPLOAD CONFIGURATION
 # =========================================================
 ALLOWED_EXTENSIONS = ["png", "jpg", "jpeg", "pdf"]
-MAX_FILE_SIZE_MB = 10
+MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "10"))
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # =========================================================
 # IMAGE PROCESSING CONFIGURATION
@@ -41,5 +79,14 @@ GRAYSCALE = True
 # =========================================================
 CURRENCY_SYMBOL = "₹"
 
-def is_windows():
+# =========================================================
+# EMAIL / SMS ALERTS (optional — alerts are skipped gracefully if unset)
+# =========================================================
+SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+GMAIL_USER = os.getenv("GMAIL_USER")
+GMAIL_PASS = os.getenv("GMAIL_PASS")
+
+
+def is_windows() -> bool:
     return os.name == "nt"

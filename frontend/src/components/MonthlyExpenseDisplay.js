@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, AreaChart, Area
@@ -6,117 +6,78 @@ import {
 import { BarChart3, Table, Calendar, TrendingUp } from 'lucide-react';
 import '../styles/MonthlyExpenseDisplay.css';
 
-const MonthlyExpenseDisplay = () => {
+const PALETTE = ['#8B5CF6', '#E879F9', '#22D3EE', '#FBBF24', '#34D399', '#F87171', '#60A5FA'];
+
+// Builds the same shape the old hardcoded mock used (month, totalSpend,
+// per-category totals, receipts, budget, variance) but from the user's
+// real receipts (passed in as a prop from DashboardPage, which already
+// fetched them from GET /api/v1/receipts) and their real budget
+// (GET /api/v1/budget/summary). Categories are whatever the OCR pipeline
+// / user actually assigned — not a fixed Travel/Food/Utility/Office/Other
+// list — so the top categories present in the data are used as columns.
+function buildMonthlyBreakdown(receipts, budget) {
+  const byMonth = new Map();
+  for (const r of receipts) {
+    const key = (r.date || '').slice(0, 7); // "YYYY-MM"
+    if (!key) continue;
+    if (!byMonth.has(key)) byMonth.set(key, { totalSpend: 0, receipts: 0, categories: {} });
+    const bucket = byMonth.get(key);
+    bucket.totalSpend += r.amount || 0;
+    bucket.receipts += 1;
+    bucket.categories[r.category || 'Uncategorized'] =
+      (bucket.categories[r.category || 'Uncategorized'] || 0) + (r.amount || 0);
+  }
+
+  const categoryTotals = {};
+  receipts.forEach(r => {
+    const cat = r.category || 'Uncategorized';
+    categoryTotals[cat] = (categoryTotals[cat] || 0) + (r.amount || 0);
+  });
+  const topCategories = Object.entries(categoryTotals)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([name], i) => ({ name, color: PALETTE[i % PALETTE.length] }));
+
+  const sortedKeys = Array.from(byMonth.keys()).sort();
+  const monthlyData = sortedKeys.map(key => {
+    const bucket = byMonth.get(key);
+    const [y, m] = key.split('-');
+    const label = new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    const variance = budget ? ((bucket.totalSpend - budget) / budget) * 100 : 0;
+    const row = {
+      month: label,
+      totalSpend: bucket.totalSpend,
+      receipts: bucket.receipts,
+      budget: budget || 0,
+      variance,
+    };
+    topCategories.forEach(({ name }) => {
+      row[name] = bucket.categories[name] || 0;
+    });
+    return row;
+  });
+
+  return { monthlyData, topCategories };
+}
+
+const MonthlyExpenseDisplay = ({ receipts = [], budget = 0 }) => {
   const [viewMode, setViewMode] = useState('chart'); // 'table' or 'chart'
   const [chartType, setChartType] = useState('bar'); // 'bar', 'line', 'area', 'pie'
 
-  // Monthly expense data
-  const monthlyData = [
-    { 
-      month: 'Jan 2026', 
-      totalSpend: 42000, 
-      travel: 15800, 
-      food: 10080, 
-      utility: 7560, 
-      office: 5040, 
-      other: 3360,
-      receipts: 89,
-      budget: 45000,
-      variance: -7.1
-    },
-    { 
-      month: 'Feb 2026', 
-      totalSpend: 38000, 
-      travel: 14440, 
-      food: 9120, 
-      utility: 6840, 
-      office: 4560, 
-      other: 3040,
-      receipts: 76,
-      budget: 45000,
-      variance: -18.4
-    },
-    { 
-      month: 'Mar 2026', 
-      totalSpend: 55000, 
-      travel: 20900, 
-      food: 13200, 
-      utility: 9900, 
-      office: 6600, 
-      other: 4400,
-      receipts: 112,
-      budget: 45000,
-      variance: 18.2
-    },
-    { 
-      month: 'Apr 2026', 
-      totalSpend: 48000, 
-      travel: 18240, 
-      food: 11520, 
-      utility: 8640, 
-      office: 5760, 
-      other: 3840,
-      receipts: 98,
-      budget: 50000,
-      variance: -4.0
-    },
-    { 
-      month: 'May 2026', 
-      totalSpend: 62000, 
-      travel: 23560, 
-      food: 14880, 
-      utility: 11160, 
-      office: 7440, 
-      other: 4960,
-      receipts: 134,
-      budget: 55000,
-      variance: 11.3
-    },
-    { 
-      month: 'Jun 2026', 
-      totalSpend: 71000, 
-      travel: 26980, 
-      food: 17040, 
-      utility: 12780, 
-      office: 8520, 
-      other: 5680,
-      receipts: 156,
-      budget: 60000,
-      variance: 15.5
-    },
-    { 
-      month: 'Jul 2026', 
-      totalSpend: 84230, 
-      travel: 32007, 
-      food: 20215, 
-      utility: 15161, 
-      office: 10108, 
-      other: 6739,
-      receipts: 128,
-      budget: 70000,
-      variance: 16.9
-    }
-  ];
+  const { monthlyData, topCategories } = useMemo(
+    () => buildMonthlyBreakdown(receipts, budget),
+    [receipts, budget]
+  );
 
-  // Category colors
-  const categoryColors = {
-    travel: '#8B5CF6',
-    food: '#E879F9',
-    utility: '#22D3EE',
-    office: '#FBBF24',
-    other: '#34D399'
-  };
+  const hasData = monthlyData.length > 0;
+  const latestMonth = hasData ? monthlyData[monthlyData.length - 1] : null;
 
   // Prepare data for pie chart (latest month breakdown)
-  const pieData = [
-    { name: 'Travel', value: monthlyData[monthlyData.length - 1].travel, color: categoryColors.travel },
-    { name: 'Food', value: monthlyData[monthlyData.length - 1].food, color: categoryColors.food },
-    { name: 'Utility', value: monthlyData[monthlyData.length - 1].utility, color: categoryColors.utility },
-    { name: 'Office', value: monthlyData[monthlyData.length - 1].office, color: categoryColors.office },
-    { name: 'Other', value: monthlyData[monthlyData.length - 1].other, color: categoryColors.other }
-  ];
+  const pieData = latestMonth
+    ? topCategories.map(({ name, color }) => ({ name, value: latestMonth[name] || 0, color }))
+    : [];
 
-  const formatCurrency = (value) => `₹${value.toLocaleString('en-IN')}`;
+  const formatCurrency = (value) => `₹${(value || 0).toLocaleString('en-IN')}`;
   
   const formatPercent = (value) => `${value > 0 ? '+' : ''}${value.toFixed(1)}%`;
 
@@ -285,11 +246,7 @@ const MonthlyExpenseDisplay = () => {
             <tr>
               <th>Month</th>
               <th>Total Spend</th>
-              <th>Travel</th>
-              <th>Food</th>
-              <th>Utility</th>
-              <th>Office</th>
-              <th>Other</th>
+              {topCategories.map(({ name }) => <th key={name}>{name}</th>)}
               <th>Receipts</th>
               <th>Budget</th>
               <th>Variance</th>
@@ -305,11 +262,9 @@ const MonthlyExpenseDisplay = () => {
                 <td className="total-spend">
                   {formatCurrency(row.totalSpend)}
                 </td>
-                <td>{formatCurrency(row.travel)}</td>
-                <td>{formatCurrency(row.food)}</td>
-                <td>{formatCurrency(row.utility)}</td>
-                <td>{formatCurrency(row.office)}</td>
-                <td>{formatCurrency(row.other)}</td>
+                {topCategories.map(({ name }) => (
+                  <td key={name}>{formatCurrency(row[name])}</td>
+                ))}
                 <td className="receipts-count">{row.receipts}</td>
                 <td>{formatCurrency(row.budget)}</td>
                 <td className={`variance ${getVarianceClass(row.variance)}`}>
@@ -317,6 +272,13 @@ const MonthlyExpenseDisplay = () => {
                 </td>
               </tr>
             ))}
+            {!hasData && (
+              <tr>
+                <td colSpan={4 + topCategories.length} style={{ textAlign: 'center', opacity: 0.6, padding: '24px' }}>
+                  No receipts yet — upload one to see your monthly breakdown here.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -391,7 +353,7 @@ const MonthlyExpenseDisplay = () => {
           <div className="stat-item">
             <TrendingUp size={20} />
             <div className="stat-content">
-              <div className="stat-value">₹{(monthlyData.reduce((sum, month) => sum + month.totalSpend, 0) / monthlyData.length / 1000).toFixed(0)}K</div>
+              <div className="stat-value">₹{hasData ? (monthlyData.reduce((sum, month) => sum + month.totalSpend, 0) / monthlyData.length / 1000).toFixed(0) : '0'}K</div>
               <div className="stat-label">Avg Monthly</div>
             </div>
           </div>

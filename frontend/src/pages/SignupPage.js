@@ -5,6 +5,7 @@ import {
   Building2, Phone, CheckCircle2, ArrowRight,
   Shield, Zap, BarChart3
 } from 'lucide-react';
+import { signup as apiSignup } from '../api/client';
 import '../styles/SignupPage.css';
 
 const SignupPage = () => {
@@ -80,6 +81,21 @@ const SignupPage = () => {
     return newErrors;
   };
 
+  const showToast = (text) => {
+    const successMessage = document.createElement('div');
+    successMessage.style.cssText = `
+      position: fixed; top: 20px; right: 20px; z-index: 1000;
+      background: linear-gradient(135deg, #10B981, #14B8A6);
+      color: white; padding: 16px 24px; border-radius: 12px;
+      font-weight: 600; box-shadow: 0 8px 25px rgba(16, 185, 129, 0.3);
+    `;
+    successMessage.textContent = text;
+    document.body.appendChild(successMessage);
+    setTimeout(() => {
+      document.body.removeChild(successMessage);
+    }, 2500);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -91,130 +107,35 @@ const SignupPage = () => {
     
     setLoading(true);
     
-    // Simulate API call
     try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Simulate successful account creation
-      console.log('Account created:', formData);
-      
-      // Store user session
-      localStorage.setItem('userEmail', formData.email);
-      localStorage.setItem('userName', `${formData.firstName} ${formData.lastName}`);
-      localStorage.setItem('isLoggedIn', 'true');
-      
-      // Show success message
-      const successMessage = document.createElement('div');
-      successMessage.style.cssText = `
-        position: fixed; top: 20px; right: 20px; z-index: 1000;
-        background: linear-gradient(135deg, #10B981, #14B8A6);
-        color: white; padding: 16px 24px; border-radius: 12px;
-        font-weight: 600; box-shadow: 0 8px 25px rgba(16, 185, 129, 0.3);
-      `;
-      successMessage.textContent = `🎉 Welcome to DigiPlanner, ${formData.firstName}!`;
-      document.body.appendChild(successMessage);
-      
-      // Remove message and redirect after short delay
+      const fullName = `${formData.firstName} ${formData.lastName}`.trim();
+      const data = await apiSignup({
+        email: formData.email,
+        password: formData.password,
+        name: fullName,
+        company: formData.company,
+        phone: formData.phone,
+      });
+
+      showToast(`🎉 Welcome to DigiPlanner, ${(data.name || formData.firstName).split(' ')[0]}!`);
+
       setTimeout(() => {
-        document.body.removeChild(successMessage);
         navigate('/dashboard');
-      }, 1500);
+      }, 1000);
       
     } catch (error) {
-      alert('❌ Something went wrong. Please try again.');
+      setErrors({ email: error.message || 'Something went wrong. Please try again.' });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGoogleSignup = async () => {
-    try {
-      setLoading(true);
-      
-      // Simulate Google OAuth process
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Simulate successful Google account creation
-      const mockGoogleUser = {
-        email: 'user@gmail.com',
-        firstName: 'Google',
-        lastName: 'User'
-      };
-      
-      // Store user session
-      localStorage.setItem('userEmail', mockGoogleUser.email);
-      localStorage.setItem('userName', `${mockGoogleUser.firstName} ${mockGoogleUser.lastName}`);
-      localStorage.setItem('isLoggedIn', 'true');
-      
-      console.log('Google signup successful');
-      
-      // Show success message
-      const successMessage = document.createElement('div');
-      successMessage.style.cssText = `
-        position: fixed; top: 20px; right: 20px; z-index: 1000;
-        background: linear-gradient(135deg, #10B981, #14B8A6);
-        color: white; padding: 16px 24px; border-radius: 12px;
-        font-weight: 600; box-shadow: 0 8px 25px rgba(16, 185, 129, 0.3);
-      `;
-      successMessage.textContent = `🎉 Welcome to DigiPlanner!`;
-      document.body.appendChild(successMessage);
-      
-      // Remove message and redirect after short delay
-      setTimeout(() => {
-        document.body.removeChild(successMessage);
-        navigate('/dashboard');
-      }, 1000);
-      
-    } catch (error) {
-      alert('❌ Google signup failed. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+  const handleGoogleSignup = () => {
+    alert('Google sign-up isn\'t wired up on the backend yet — please create your account with email and password instead.');
   };
 
-  const handleMicrosoftSignup = async () => {
-    try {
-      setLoading(true);
-      
-      // Simulate Microsoft OAuth process
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Simulate successful Microsoft account creation
-      const mockMicrosoftUser = {
-        email: 'user@outlook.com',
-        firstName: 'Microsoft',
-        lastName: 'User'
-      };
-      
-      // Store user session
-      localStorage.setItem('userEmail', mockMicrosoftUser.email);
-      localStorage.setItem('userName', `${mockMicrosoftUser.firstName} ${mockMicrosoftUser.lastName}`);
-      localStorage.setItem('isLoggedIn', 'true');
-      
-      console.log('Microsoft signup successful');
-      
-      // Show success message
-      const successMessage = document.createElement('div');
-      successMessage.style.cssText = `
-        position: fixed; top: 20px; right: 20px; z-index: 1000;
-        background: linear-gradient(135deg, #10B981, #14B8A6);
-        color: white; padding: 16px 24px; border-radius: 12px;
-        font-weight: 600; box-shadow: 0 8px 25px rgba(16, 185, 129, 0.3);
-      `;
-      successMessage.textContent = `🎉 Welcome to DigiPlanner!`;
-      document.body.appendChild(successMessage);
-      
-      // Remove message and redirect after short delay
-      setTimeout(() => {
-        document.body.removeChild(successMessage);
-        navigate('/dashboard');
-      }, 1000);
-      
-    } catch (error) {
-      alert('❌ Microsoft signup failed. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+  const handleMicrosoftSignup = () => {
+    alert('Microsoft sign-up isn\'t wired up on the backend yet — please create your account with email and password instead.');
   };
 
   const features = [

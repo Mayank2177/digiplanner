@@ -1,86 +1,77 @@
+"""
+db.py — SQLite connection + schema management.
+
+This REPLACES the old `db.py` + `database(2).py` duplicate.
+Fix applied: DB_PATH now comes from config.py (so every module in the app
+writes to the SAME database file) instead of a second, disconnected
+"receipts.db" created relative to whatever folder the process happened to
+be launched from.
+"""
+
 import sqlite3
-from pathlib import Path
-
-# ================= DATABASE FILE =================
-DB_PATH = Path("receipts.db")
+from config.config import DB_PATH
 
 
-# ================= GET DB CONNECTION =================
-def get_db():
+def get_db() -> sqlite3.Connection:
     """
     Returns a SQLite connection with row_factory enabled
     so rows behave like dictionaries.
     """
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
-# ================= INITIALIZE DATABASE =================
-def init_db():
+def init_db() -> None:
     """
-    Creates receipts table if it does not exist.
-    Call this once at app startup.
+    Creates all required tables if they do not exist.
+    Safe to call multiple times (e.g. on every app startup).
     """
     db = get_db()
 
-    db.execute(
-        """
-        CREATE TABLE IF NOT EXISTS receipts (
-            bill_id TEXT PRIMARY KEY,
-            user_email TEXT,
-            vendor TEXT NOT NULL,
-            date TEXT NOT NULL,
-            amount REAL NOT NULL,
-            tax REAL NOT NULL,
-            subtotal REAL DEFAULT 0.0,
-            category TEXT DEFAULT 'Uncategorized'
-        )
-        """
-    )
-    
-    # --- Optimization: Add Indexes for Search ---
-    db.execute("CREATE INDEX IF NOT EXISTS idx_vendor ON receipts(vendor)")
-    db.execute("CREATE INDEX IF NOT EXISTS idx_date ON receipts(date)")
-    db.execute("CREATE INDEX IF NOT EXISTS idx_category ON receipts(category)")
-
+    # ── users ────────────────────────────────────────────────────────────
     db.execute(
         """
         CREATE TABLE IF NOT EXISTS users (
             email TEXT PRIMARY KEY,
-            password TEXT,
+            password_hash TEXT NOT NULL,
             name TEXT,
+            company TEXT,
             phone TEXT,
             budget REAL DEFAULT 50000.0,
-            auth_method TEXT DEFAULT 'email'
+            auth_method TEXT DEFAULT 'email',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
         """
     )
 
-    # Migration: Add subtotal column if it doesn't exist
-    try:
-        db.execute("ALTER TABLE receipts ADD COLUMN subtotal REAL DEFAULT 0.0")
-    except sqlite3.OperationalError:
-        pass
+    # ── receipts ─────────────────────────────────────────────────────────
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS receipts (
+            bill_id TEXT NOT NULL,
+            user_email TEXT NOT NULL,
+            vendor TEXT NOT NULL,
+            date TEXT NOT NULL,
+            amount REAL NOT NULL,
+            tax REAL DEFAULT 0.0,
+            subtotal REAL DEFAULT 0.0,
+            category TEXT DEFAULT 'Uncategorized',
+            raw_text TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (bill_id, user_email),
+            FOREIGN KEY (user_email) REFERENCES users(email) ON DELETE CASCADE
+        )
+        """
+    )
 
-    # Migration: Add category column if it doesn't exist
-    try:
-        db.execute("ALTER TABLE receipts ADD COLUMN category TEXT DEFAULT 'Uncategorized'")
-    except sqlite3.OperationalError:
-        pass
+    db.execute("CREATE INDEX IF NOT EXISTS idx_vendor ON receipts(vendor)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_date ON receipts(date)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_category ON receipts(category)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_user_email ON receipts(user_email)")
 
-    # Migration: Add user_email column if it doesn't exist
-    try:
-        db.execute("ALTER TABLE receipts ADD COLUMN user_email TEXT")
-    except sqlite3.OperationalError:
-        pass
-
-    # Migration: Add budget column to users if it doesn't exist
-    try:
-        db.execute("ALTER TABLE users ADD COLUMN budget REAL DEFAULT 50000.0")
-    except sqlite3.OperationalError:
-        pass
-
+    # ── alerts_sent (tracks which budget-threshold emails were already sent) ─
     db.execute(
         """
         CREATE TABLE IF NOT EXISTS alerts_sent (
@@ -94,3 +85,4 @@ def init_db():
     )
 
     db.commit()
+    db.close()

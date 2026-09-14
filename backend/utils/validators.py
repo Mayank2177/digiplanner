@@ -1,30 +1,46 @@
+"""
+validators.py — File and data validation helpers.
+
+FIX APPLIED: the original version was written for Streamlit's
+`st.file_uploader` return object (`uploaded_file.name`, `uploaded_file.size`
+attributes). FastAPI's `UploadFile` doesn't expose `.size` the same way and
+this backend no longer uses Streamlit at all, so this now validates a
+filename + raw byte length directly — usable from any web framework.
+"""
+
 from config.config import ALLOWED_EXTENSIONS, MAX_FILE_SIZE_MB
 
-def validate_uploaded_file(uploaded_file):
-    if uploaded_file is None:
+
+def validate_uploaded_file(filename: str, file_size_bytes: int) -> None:
+    """
+    Raises ValueError if the file extension isn't allowed or the file is
+    too large. Call this in the upload endpoint before running OCR.
+    """
+    if not filename:
         raise ValueError("No file uploaded")
 
-    ext = uploaded_file.name.split(".")[-1].lower()
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if ext not in ALLOWED_EXTENSIONS:
-        raise ValueError("Invalid file type")
+        raise ValueError(
+            f"Invalid file type '.{ext}'. Allowed types: {', '.join(ALLOWED_EXTENSIONS)}"
+        )
 
-    if uploaded_file.size > MAX_FILE_SIZE_MB * 1024 * 1024:
-        raise ValueError("File size exceeded")
+    max_bytes = MAX_FILE_SIZE_MB * 1024 * 1024
+    if file_size_bytes > max_bytes:
+        raise ValueError(f"File size exceeds the {MAX_FILE_SIZE_MB}MB limit")
 
-def calculate_items_total(items):
+
+def calculate_items_total(items) -> float:
     return sum(i["quantity"] * i["price"] for i in items)
 
-def validate_total(extracted_total, calculated_total, tolerance=2.0):
+
+def validate_total(extracted_total, calculated_total, tolerance: float = 2.0) -> bool:
     if extracted_total is None:
         return False
     return abs(extracted_total - calculated_total) <= tolerance
 
-def detect_duplicate(df, merchant, date, total):
-    if df.empty:
-        return False
 
-    return not df[
-        (df["merchant"] == merchant) &
-        (df["date"] == date) &
-        (df["total"] == total)
-    ].empty
+def is_valid_email(email: str) -> bool:
+    """Lightweight email format check (no external dependency required)."""
+    import re
+    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email or ""))

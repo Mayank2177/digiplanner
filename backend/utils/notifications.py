@@ -1,46 +1,53 @@
+"""
+notifications.py — Budget alert emails (and SMS placeholder).
+
+FIX APPLIED: previously, if GMAIL_USER/GMAIL_PASS weren't set, this would
+attempt to connect to Gmail's SMTP with `None` credentials and throw an
+unhandled exception. Since this is called from inside save_receipt() on
+every single receipt save, that would have silently broken uploads for any
+dev who hadn't set up email credentials. Now it checks first and skips
+gracefully (logging a clear message) if not configured.
+"""
+
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import logging
-import os
-from dotenv import load_dotenv
 
-load_dotenv()
+from config.config import SMTP_SERVER, SMTP_PORT, GMAIL_USER, GMAIL_PASS
+from utils.logger import log_info, log_error
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# ── SMTP Configuration ────────────────────────────────────────────────────────
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT   = 587
-GMAIL_USER  = os.getenv("GMAIL_USER")
-GMAIL_PASS  = os.getenv("GMAIL_PASS")
-
-# Alert thresholds (%)
 ALERT_THRESHOLDS = [50, 90, 100]
 
 
 def _alert_color(threshold: int) -> str:
-    """Return a color hex per severity."""
     if threshold >= 100:
         return "#ef4444"   # red
     if threshold >= 90:
         return "#f97316"   # orange
-    return "#f59e0b"       # amber (50%)
+    return "#f59e0b"       # amber
 
 
 def send_email_alert(recipient_email: str, threshold: int, current_spend: float, budget: float) -> bool:
     """
-    Sends a rich HTML budget alert email to the user's login email via Gmail SMTP.
+    Sends a rich HTML budget alert email to the user via Gmail SMTP.
+    Returns False (and logs) instead of raising if email isn't configured
+    or sending fails, so callers never need to worry about this breaking
+    the request that triggered it.
     """
-    color    = _alert_color(threshold)
-    pct      = min((current_spend / budget * 100) if budget else 0, 100)
+    if not GMAIL_USER or not GMAIL_PASS:
+        log_info(
+            f"Email alerts not configured (GMAIL_USER/GMAIL_PASS missing) — "
+            f"skipping {threshold}% alert for {recipient_email}."
+        )
+        return False
+
+    color = _alert_color(threshold)
+    pct = min((current_spend / budget * 100) if budget else 0, 100)
     remaining = max(budget - current_spend, 0)
 
     level_label = {
-        50:  "⚠️ Half-way Warning",
-        90:  "🚨 Critical Alert",
+        50: "⚠️ Half-way Warning",
+        90: "🚨 Critical Alert",
         100: "🔴 Budget Exceeded!",
     }.get(threshold, f"⚠️ {threshold}% Alert")
 
@@ -55,8 +62,6 @@ def send_email_alert(recipient_email: str, threshold: int, current_spend: float,
       <table width="560" cellpadding="0" cellspacing="0"
              style="background:#fff;border-radius:20px;overflow:hidden;
                     box-shadow:0 4px 24px rgba(0,0,0,0.08);">
-
-        <!-- Header -->
         <tr>
           <td style="background:linear-gradient(135deg,{color},{color}cc);
                      padding:32px 40px;text-align:center;">
@@ -69,8 +74,6 @@ def send_email_alert(recipient_email: str, threshold: int, current_spend: float,
             </p>
           </td>
         </tr>
-
-        <!-- Body -->
         <tr>
           <td style="padding:36px 40px;">
             <p style="color:#374151;font-size:1rem;margin:0 0 24px;">
@@ -78,8 +81,6 @@ def send_email_alert(recipient_email: str, threshold: int, current_spend: float,
               Your spending this month has reached <strong style="color:{color};">{threshold}%</strong>
               of your set monthly budget. Here's a quick summary:
             </p>
-
-            <!-- Stats -->
             <table width="100%" cellpadding="0" cellspacing="8">
               <tr>
                 <td style="background:#f9fafb;border-radius:12px;padding:16px 20px;text-align:center;">
@@ -107,8 +108,6 @@ def send_email_alert(recipient_email: str, threshold: int, current_spend: float,
                 </td>
               </tr>
             </table>
-
-            <!-- Progress bar -->
             <div style="margin:28px 0 8px;">
               <div style="display:flex;justify-content:space-between;
                           font-size:0.82rem;color:#6b7280;font-weight:600;margin-bottom:8px;">
@@ -120,8 +119,6 @@ def send_email_alert(recipient_email: str, threshold: int, current_spend: float,
                             height:100%;border-radius:99px;"></div>
               </div>
             </div>
-
-            <!-- Tip -->
             <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:12px;
                         padding:16px 20px;margin-top:24px;">
               <p style="margin:0;color:#92400e;font-size:0.9rem;font-weight:600;">
@@ -132,8 +129,6 @@ def send_email_alert(recipient_email: str, threshold: int, current_spend: float,
             </div>
           </td>
         </tr>
-
-        <!-- Footer -->
         <tr>
           <td style="background:#f9fafb;padding:20px 40px;text-align:center;
                      border-top:1px solid #e5e7eb;">
@@ -143,7 +138,6 @@ def send_email_alert(recipient_email: str, threshold: int, current_spend: float,
             </p>
           </td>
         </tr>
-
       </table>
     </td></tr>
   </table>
@@ -153,27 +147,28 @@ def send_email_alert(recipient_email: str, threshold: int, current_spend: float,
 
     try:
         msg = MIMEMultipart("alternative")
-        msg["From"]    = f"Receipt Vault Analyzer <{GMAIL_USER}>"
-        msg["To"]      = recipient_email
+        msg["From"] = f"Receipt Vault Analyzer <{GMAIL_USER}>"
+        msg["To"] = recipient_email
         msg["Subject"] = subject
         msg.attach(MIMEText(html_body, "html"))
 
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=10)
         server.starttls()
         server.login(GMAIL_USER, GMAIL_PASS)
         server.sendmail(GMAIL_USER, recipient_email, msg.as_string())
         server.quit()
-        logger.info(f"Budget alert ({threshold}%) sent to {recipient_email}")
+        log_info(f"Budget alert ({threshold}%) sent to {recipient_email}")
         return True
     except Exception as e:
-        logger.error(f"Failed to send email alert to {recipient_email}: {e}")
+        log_error(f"Failed to send email alert to {recipient_email}: {e}")
         return False
 
 
 def send_sms_alert(phone_number: str, threshold: int, current_spend: float) -> bool:
     """
-    Placeholder for SMS alerts (requires Twilio or similar provider).
+    Placeholder for SMS alerts. Wire up Twilio (or similar) here when ready —
+    for now this just logs, so it never fails a request.
     """
     message = f"Budget Alert: {threshold}% of your monthly limit reached. Spent: ₹{current_spend:,.2f}"
-    logger.info(f"SMS Alert (not sent - no provider configured) to {phone_number}: {message}")
+    log_info(f"SMS Alert (not sent - no provider configured) to {phone_number}: {message}")
     return True
