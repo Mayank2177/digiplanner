@@ -4,6 +4,7 @@ import {
   Receipt, Eye, EyeOff, Mail, Lock, 
   ArrowRight, Shield
 } from 'lucide-react';
+import { login as apiLogin } from '../api/client';
 import '../styles/LoginPage.css';
 
 const LoginPage = () => {
@@ -49,42 +50,27 @@ const LoginPage = () => {
     return newErrors;
   };
 
-  const handleGoogleLogin = async () => {
-    try {
-      setLoading(true);
-      
-      // Simulate Google OAuth process
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Simulate successful Google authentication
-      console.log('Google authentication successful');
-      
-      // Redirect to dashboard
-      navigate('/dashboard');
-    } catch (error) {
-      alert('❌ Google sign in failed. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+  const handleGoogleLogin = () => {
+    alert('Google sign-in isn\'t wired up on the backend yet — please sign in with your email and password instead.');
   };
 
-  const handleMicrosoftLogin = async () => {
-    try {
-      setLoading(true);
-      
-      // Simulate Microsoft OAuth process
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Simulate successful Microsoft authentication
-      console.log('Microsoft authentication successful');
-      
-      // Redirect to dashboard
-      navigate('/dashboard');
-    } catch (error) {
-      alert('❌ Microsoft sign in failed. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+  const handleMicrosoftLogin = () => {
+    alert('Microsoft sign-in isn\'t wired up on the backend yet — please sign in with your email and password instead.');
+  };
+
+  const showToast = (text, colorFrom = '#10B981', colorTo = '#14B8A6') => {
+    const successMessage = document.createElement('div');
+    successMessage.style.cssText = `
+      position: fixed; top: 20px; right: 20px; z-index: 1000;
+      background: linear-gradient(135deg, ${colorFrom}, ${colorTo});
+      color: white; padding: 16px 24px; border-radius: 12px;
+      font-weight: 600; box-shadow: 0 8px 25px rgba(16, 185, 129, 0.3);
+    `;
+    successMessage.textContent = text;
+    document.body.appendChild(successMessage);
+    setTimeout(() => {
+      document.body.removeChild(successMessage);
+    }, 2500);
   };
 
   const handleSubmit = async (e) => {
@@ -98,36 +84,17 @@ const LoginPage = () => {
     
     setLoading(true);
     
-    // Simulate API call
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Simulate successful login
-      console.log('Login successful:', formData.email);
-      
-      // Store user session (in real app, this would be JWT token, etc.)
-      localStorage.setItem('userEmail', formData.email);
-      localStorage.setItem('isLoggedIn', 'true');
-      
-      // Show success message briefly
-      const successMessage = document.createElement('div');
-      successMessage.style.cssText = `
-        position: fixed; top: 20px; right: 20px; z-index: 1000;
-        background: linear-gradient(135deg, #10B981, #14B8A6);
-        color: white; padding: 16px 24px; border-radius: 12px;
-        font-weight: 600; box-shadow: 0 8px 25px rgba(16, 185, 129, 0.3);
-      `;
-      successMessage.textContent = `✅ Welcome back, ${formData.email.split('@')[0]}!`;
-      document.body.appendChild(successMessage);
-      
-      // Remove message and redirect after short delay
+      const data = await apiLogin({ email: formData.email, password: formData.password });
+
+      showToast(`✅ Welcome back, ${(data.name || data.email).split(' ')[0]}!`);
+
       setTimeout(() => {
-        document.body.removeChild(successMessage);
         navigate('/dashboard');
-      }, 1000);
+      }, 800);
       
     } catch (error) {
-      alert('❌ Login failed. Please check your credentials.');
+      setErrors({ password: error.message || 'Login failed. Please check your credentials.' });
     } finally {
       setLoading(false);
     }

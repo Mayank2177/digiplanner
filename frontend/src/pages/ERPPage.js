@@ -7,6 +7,7 @@ import {
   FileText, Download, Webhook,
   Play
 } from 'lucide-react';
+import { syncToErp, getMe } from '../api/client';
 import '../styles/ERPPage.css';
 
 const ERPPage = () => {
@@ -64,7 +65,7 @@ const ERPPage = () => {
     }
   ]);
 
-  const [apiKeys, setApiKeys] = useState([
+  const [apiKeys] = useState([
     {
       id: 1,
       name: 'Production API Key',
@@ -97,7 +98,7 @@ const ERPPage = () => {
     }
   ]);
 
-  const [webhooks, setWebhooks] = useState([
+  const [webhooks] = useState([
     {
       id: 1,
       name: 'Receipt Processing Webhook',
@@ -120,7 +121,7 @@ const ERPPage = () => {
     }
   ]);
 
-  const [syncLogs, setSyncLogs] = useState([
+  const [syncLogs] = useState([
     { id: 1, timestamp: '2026-07-12T10:30:00Z', system: 'SAP Business One', action: 'sync_receipts', status: 'success', records: 45 },
     { id: 2, timestamp: '2026-07-12T10:25:00Z', system: 'QuickBooks Online', action: 'sync_expenses', status: 'success', records: 32 },
     { id: 3, timestamp: '2026-07-12T10:20:00Z', system: 'NetSuite', action: 'auth_refresh', status: 'error', error: 'Token expired' },
@@ -161,19 +162,63 @@ const ERPPage = () => {
     }));
   };
 
+  const [syncingId, setSyncingId] = useState(null);
+  const [testingId, setTestingId] = useState(null);
+  const [lastPayload, setLastPayload] = useState(null);
+
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
     // You could add a toast notification here
   };
 
-  const testConnection = (connectionId) => {
-    // Simulate connection test
-    console.log(`Testing connection for ${connectionId}`);
+  // "Testing a connection" to a real SAP/QuickBooks/NetSuite/Dynamics
+  // account would need that vendor's OAuth credentials, which this app
+  // doesn't have — so this checks that our *own* backend session is
+  // alive and valid (a real, if more limited, connectivity check).
+  const testConnection = async (connectionId) => {
+    setTestingId(connectionId);
+    try {
+      await getMe();
+      setConnections(prev => prev.map(c =>
+        c.id === connectionId ? { ...c, status: 'connected', error: undefined } : c
+      ));
+      alert('✅ Your DigiPlanner session is authenticated and reachable. (Testing the live SAP/QuickBooks/etc. connection itself would require that vendor\'s real OAuth credentials.)');
+    } catch (err) {
+      setConnections(prev => prev.map(c =>
+        c.id === connectionId ? { ...c, status: 'error', error: err.message } : c
+      ));
+      alert(`❌ Connectivity check failed: ${err.message}`);
+    } finally {
+      setTestingId(null);
+    }
   };
 
-  const syncConnection = (connectionId) => {
-    // Simulate manual sync
-    console.log(`Syncing connection ${connectionId}`);
+  // Calls the real backend endpoint (POST /api/v1/erp/sync) which formats
+  // the user's actual saved receipts into a simulated ERP export payload
+  // (SAP-style or ERPNext-style depending on the system name). It does not
+  // push data to a live third-party ERP — see the backend's docstring for
+  // sync_to_erp — but the payload and record count returned are real.
+  const syncConnection = async (connectionId) => {
+    const connection = connections.find(c => c.id === connectionId);
+    if (!connection) return;
+
+    setSyncingId(connectionId);
+    try {
+      const result = await syncToErp(connection.name);
+      setConnections(prev => prev.map(c =>
+        c.id === connectionId
+          ? { ...c, status: 'connected', lastSync: result.sync_time, recordsSynced: result.exported_records, error: undefined }
+          : c
+      ));
+      setLastPayload({ connectionName: connection.name, ...result });
+    } catch (err) {
+      setConnections(prev => prev.map(c =>
+        c.id === connectionId ? { ...c, status: 'error', error: err.message } : c
+      ));
+      alert(`❌ Sync failed: ${err.message}`);
+    } finally {
+      setSyncingId(null);
+    }
   };
 
   return (
@@ -418,16 +463,18 @@ const ERPPage = () => {
                     <button 
                       className="action-btn test"
                       onClick={() => testConnection(connection.id)}
+                      disabled={testingId === connection.id}
                     >
                       <Activity size={14} />
-                      Test
+                      {testingId === connection.id ? 'Testing…' : 'Test'}
                     </button>
                     <button 
                       className="action-btn sync"
                       onClick={() => syncConnection(connection.id)}
+                      disabled={syncingId === connection.id}
                     >
-                      <RefreshCw size={14} />
-                      Sync
+                      <RefreshCw size={14} className={syncingId === connection.id ? 'spin' : ''} />
+                      {syncingId === connection.id ? 'Syncing…' : 'Sync'}
                     </button>
                     <button className="action-btn edit">
                       <Edit3 size={14} />
@@ -654,6 +701,30 @@ const ERPPage = () => {
           </div>
         )}
       </div>
+
+      {/* Real sync payload preview — populated by an actual call to
+          POST /api/v1/erp/sync after clicking "Sync" on a connection. */}
+      {lastPayload && (
+        <div className="modal-overlay" onClick={() => setLastPayload(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '640px' }}>
+            <div className="modal-header">
+              <h3>Sync Result — {lastPayload.connectionName}</h3>
+              <button className="modal-close" onClick={() => setLastPayload(null)}>✕</button>
+            </div>
+            <p style={{ opacity: 0.75, fontSize: '13px', margin: '0 0 12px' }}>
+              {lastPayload.exported_records} receipt(s) exported at {formatTime(lastPayload.sync_time)}.
+              This is a simulated ERP payload built from your real receipts — DigiPlanner doesn't push
+              to a live SAP/QuickBooks/NetSuite/Dynamics account.
+            </p>
+            <pre style={{
+              background: 'rgba(0,0,0,0.35)', padding: '12px', borderRadius: '8px',
+              fontSize: '12px', overflowX: 'auto', maxHeight: '320px', overflowY: 'auto',
+            }}>
+              {JSON.stringify(lastPayload.payload_preview, null, 2)}
+            </pre>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

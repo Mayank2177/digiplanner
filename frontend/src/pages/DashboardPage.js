@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Receipt, LayoutDashboard, Upload, BarChart3,
   MessageSquare, Plug, LogOut, Search, Bell, Settings,
-  ChevronDown, TrendingUp, TrendingDown, MoreHorizontal,
-  FileText, Download, Filter, Calendar, CheckCircle2,
-  AlertTriangle, XCircle, ArrowUpRight, ArrowDownRight,
+  ChevronDown, TrendingUp, MoreHorizontal,
+  FileText, CheckCircle2,
+  AlertTriangle, XCircle, ArrowUpRight,
   Sun, Moon
 } from 'lucide-react';
 import ChatPage from './ChatPage';
@@ -13,10 +13,36 @@ import ERPPage from './ERPPage';
 import MonthlyExpenseDisplay from '../components/MonthlyExpenseDisplay';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, PieChart, Pie, Cell, Legend, LineChart, Line,
-  RadialBarChart, RadialBar, ComposedChart, ReferenceLine
+  BarChart, Bar, PieChart, Pie, Cell
 } from 'recharts';
+import {
+  isLoggedIn, clearSession, getMe, getReceipts, uploadReceipt,
+  getBudgetSummary, getSpendByCategory, deleteReceipt as apiDeleteReceipt,
+} from '../api/client';
 import '../styles/DashboardPage.css';
+
+// Colors reused for whichever categories come back from the backend
+// (GET /api/v1/analytics/spend-by-category), since the API returns
+// category names/totals but not colors.
+const CATEGORY_COLORS = ['#8B5CF6', '#E879F9', '#22D3EE', '#FBBF24', '#34D399', '#F87171', '#60A5FA'];
+
+function formatShortDate(isoDate) {
+  if (!isoDate) return '';
+  const d = new Date(isoDate);
+  if (isNaN(d.getTime())) return isoDate;
+  return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+}
+
+function monthKey(isoDate) {
+  return (isoDate || '').slice(0, 7); // "YYYY-MM"
+}
+
+function monthLabel(key) {
+  const [y, m] = key.split('-');
+  if (!y || !m) return key;
+  const d = new Date(Number(y), Number(m) - 1, 1);
+  return d.toLocaleDateString('en-US', { month: 'short' });
+}
 
 const sidebarItems = [
   { icon: Upload, label: 'Upload Receipt', id: 'upload' },
@@ -26,181 +52,13 @@ const sidebarItems = [
   { icon: Plug, label: 'ERP & API', id: 'erp' },
 ];
 
-const spendingData = [
-  { name: 'Mon', amount: 4200 },
-  { name: 'Tue', amount: 6800 },
-  { name: 'Wed', amount: 5100 },
-  { name: 'Thu', amount: 8900 },
-  { name: 'Fri', amount: 6200 },
-  { name: 'Sat', amount: 9500 },
-  { name: 'Sun', amount: 4800 },
-];
+// NOTE: the static demo datasets that used to live here (spendingData,
+// categoryData, monthlyData, monthlySpendingDetails, recentReceipts,
+// validationAlerts) have been removed. All of that is now computed from
+// real data fetched from the backend inside the DashboardPage component
+// below (see the useMemo blocks for `categoryData`, `monthlyData`,
+// `monthlySpendingDetails`, `recentReceiptsView`, and `validationAlerts`).
 
-const categoryData = [
-  { name: 'Travel', value: 38, color: '#8B5CF6' },
-  { name: 'Food', value: 24, color: '#E879F9' },
-  { name: 'Utility', value: 18, color: '#22D3EE' },
-  { name: 'Office', value: 12, color: '#FBBF24' },
-  { name: 'Other', value: 8, color: '#34D399' },
-];
-
-const monthlyData = [
-  { name: 'Jan', spend: 42000, receipts: 89, categories: { Travel: 15800, Food: 10080, Utility: 7560, Office: 5040, Other: 3360 }, avgPerReceipt: 472, topVendor: 'IndiGo Airlines', budget: 45000, variance: -7.1 },
-  { name: 'Feb', spend: 38000, receipts: 76, categories: { Travel: 14440, Food: 9120, Utility: 6840, Office: 4560, Other: 3040 }, avgPerReceipt: 500, topVendor: 'Cafe Coffee Day', budget: 45000, variance: -18.4 },
-  { name: 'Mar', spend: 55000, receipts: 112, categories: { Travel: 20900, Food: 13200, Utility: 9900, Office: 6600, Other: 4400 }, avgPerReceipt: 491, topVendor: 'Amazon Business', budget: 45000, variance: 18.2 },
-  { name: 'Apr', spend: 48000, receipts: 98, categories: { Travel: 18240, Food: 11520, Utility: 8640, Office: 5760, Other: 3840 }, avgPerReceipt: 490, topVendor: 'Uber', budget: 50000, variance: -4.0 },
-  { name: 'May', spend: 62000, receipts: 134, categories: { Travel: 23560, Food: 14880, Utility: 11160, Office: 7440, Other: 4960 }, avgPerReceipt: 463, topVendor: 'IndiGo Airlines', budget: 55000, variance: 11.3 },
-  { name: 'Jun', spend: 71000, receipts: 156, categories: { Travel: 26980, Food: 17040, Utility: 12780, Office: 8520, Other: 5680 }, avgPerReceipt: 455, topVendor: 'Amazon Business', budget: 60000, variance: 15.5 },
-  { name: 'Jul', spend: 84230, receipts: 128, categories: { Travel: 32007, Food: 20215, Utility: 15161, Office: 10108, Other: 6739 }, avgPerReceipt: 658, topVendor: 'IndiGo Airlines', budget: 70000, variance: 16.9 },
-];
-
-// Enhanced monthly spending data for detailed analytics
-const monthlySpendingDetails = {
-  currentMonth: {
-    name: 'July 2026',
-    totalSpend: 84230,
-    budget: 70000,
-    budgetUsed: 120.3,
-    variance: 16.9,
-    receiptsCount: 128,
-    avgPerReceipt: 658,
-    avgPerDay: 2717,
-    topCategories: [
-      { name: 'Travel', amount: 32007, percentage: 38, change: 12.5, receipts: 45 },
-      { name: 'Food', amount: 20215, percentage: 24, change: -8.2, receipts: 38 },
-      { name: 'Utility', amount: 15161, percentage: 18, change: 15.1, receipts: 12 },
-      { name: 'Office', amount: 10108, percentage: 12, change: 22.8, receipts: 25 },
-      { name: 'Other', amount: 6739, percentage: 8, change: -5.5, receipts: 8 }
-    ],
-    topVendors: [
-      { name: 'IndiGo Airlines', amount: 15240, receipts: 8, category: 'Travel' },
-      { name: 'Amazon Business', amount: 8950, receipts: 15, category: 'Office' },
-      { name: 'Cafe Coffee Day', amount: 4580, receipts: 12, category: 'Food' },
-      { name: 'Uber', amount: 3240, receipts: 18, category: 'Travel' },
-      { name: 'BESCOM Electricity', amount: 2890, receipts: 3, category: 'Utility' }
-    ],
-    weeklyBreakdown: [
-      { week: 'Week 1', amount: 18450, receipts: 28, avgDaily: 2635 },
-      { week: 'Week 2', amount: 24680, receipts: 35, avgDaily: 3526 },
-      { week: 'Week 3', amount: 21890, receipts: 32, avgDaily: 3127 },
-      { week: 'Week 4', amount: 19210, receipts: 33, avgDaily: 2744 }
-    ],
-    trends: {
-      spendingTrend: 'increasing',
-      trendPercentage: 18.7,
-      peakDay: 'Friday',
-      peakAmount: 12450,
-      lowDay: 'Sunday',
-      lowAmount: 1200
-    }
-  },
-  previousMonth: {
-    name: 'June 2026',
-    totalSpend: 71000,
-    receiptsCount: 156,
-    avgPerReceipt: 455
-  },
-  yearToDate: {
-    totalSpend: 400230,
-    totalReceipts: 793,
-    avgMonthly: 57176,
-    projection: 686112
-  }
-};
-
-const recentReceipts = [
-  { 
-    vendor: 'Cafe Turmeric', 
-    amount: 640, 
-    date: 'Jul 08', 
-    category: 'Food', 
-    status: 'validated', 
-    tax: 51,
-    receiptId: '#1200',
-    items: [
-      { name: 'Filter coffee x2', amount: 120 },
-      { name: 'Masala dosa', amount: 180 },
-      { name: 'Service & misc', amount: 289 }
-    ]
-  },
-  { 
-    vendor: 'IndiGo Airlines', 
-    amount: 5240, 
-    date: 'Jul 06', 
-    category: 'Travel', 
-    status: 'validated', 
-    tax: 420,
-    receiptId: '#1199',
-    items: [
-      { name: 'Fare — BLR→DEL', amount: 4300 },
-      { name: 'Seat selection', amount: 240 },
-      { name: 'Baggage', amount: 280 },
-      { name: 'Convenience fee', amount: 420 }
-    ]
-  },
-  { 
-    vendor: 'BESCOM Electricity', 
-    amount: 2380, 
-    date: 'Jul 02', 
-    category: 'Utility', 
-    status: 'pending', 
-    tax: 190,
-    receiptId: '#1198',
-    items: [
-      { name: 'Electricity charges', amount: 1890 },
-      { name: 'Fixed charges', amount: 300 },
-      { name: 'Late fee', amount: 190 }
-    ]
-  },
-  { 
-    vendor: 'Amazon Business', 
-    amount: 12500, 
-    date: 'Jun 28', 
-    category: 'Office', 
-    status: 'validated', 
-    tax: 2250,
-    receiptId: '#1197',
-    items: [
-      { name: 'Office supplies', amount: 8500 },
-      { name: 'Electronics', amount: 3200 },
-      { name: 'Shipping charges', amount: 800 }
-    ]
-  },
-  { 
-    vendor: 'Ola Cabs', 
-    amount: 450, 
-    date: 'Jun 25', 
-    category: 'Travel', 
-    status: 'flagged', 
-    tax: 36,
-    receiptId: '#1196',
-    items: [
-      { name: 'Trip fare', amount: 380 },
-      { name: 'Platform fee', amount: 34 },
-      { name: 'Service tax', amount: 36 }
-    ]
-  },
-  { 
-    vendor: 'Swiggy', 
-    amount: 890, 
-    date: 'Jun 22', 
-    category: 'Food', 
-    status: 'validated', 
-    tax: 71,
-    receiptId: '#1195',
-    items: [
-      { name: 'Food items', amount: 750 },
-      { name: 'Delivery charges', amount: 69 },
-      { name: 'Packaging fee', amount: 71 }
-    ]
-  },
-];
-
-const validationAlerts = [
-  { type: 'duplicate', message: 'Possible duplicate: Receipt #1289 matches #1043', severity: 'warning' },
-  { type: 'tax', message: 'Tax rate mismatch in BESCOM bill (expected 8%, got 12%)', severity: 'error' },
-  { type: 'compliance', message: 'GSTIN verified for Amazon Business', severity: 'success' },
-];
 
 const DashboardPage = () => {
   const navigate = useNavigate();
@@ -266,6 +124,36 @@ const DashboardPage = () => {
     }
   ]);
 
+  // ── Real backend-backed state ──────────────────────────────────────────
+  const [me, setMe] = useState(null);
+  const [receipts, setReceipts] = useState([]);
+  const [receiptsLoading, setReceiptsLoading] = useState(true);
+  const [receiptsError, setReceiptsError] = useState(null);
+  const [budgetSummary, setBudgetSummaryState] = useState(null);
+  const [categoryBreakdown, setCategoryBreakdown] = useState([]);
+  const [uploading, setUploading] = useState(false);
+
+  const loadDashboardData = useCallback(async () => {
+    setReceiptsLoading(true);
+    setReceiptsError(null);
+    try {
+      const [meData, receiptsData, budgetData, categorySpendData] = await Promise.all([
+        getMe(),
+        getReceipts(),
+        getBudgetSummary(),
+        getSpendByCategory(),
+      ]);
+      setMe(meData);
+      setReceipts(receiptsData);
+      setBudgetSummaryState(budgetData);
+      setCategoryBreakdown(categorySpendData);
+    } catch (err) {
+      setReceiptsError(err.message || 'Failed to load your data from the server.');
+    } finally {
+      setReceiptsLoading(false);
+    }
+  }, []);
+
   const handleReceiptClick = (receipt) => {
     setSelectedReceipt(receipt);
     setShowReceiptDetail(true);
@@ -322,14 +210,15 @@ const DashboardPage = () => {
     };
   }, [showNotifications]);
 
-  // Check if user is authenticated and initialize theme
+  // Check if user is authenticated (has a real JWT), initialize theme, and
+  // load real data from the backend (GET /api/v1/auth/me, /receipts,
+  // /budget/summary, /analytics/spend-by-category).
   useEffect(() => {
-    const isLoggedIn = localStorage.getItem('isLoggedIn');
-    if (!isLoggedIn) {
+    if (!isLoggedIn()) {
       navigate('/login');
+      return;
     }
 
-    // Initialize theme from localStorage or default to light mode
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'dark') {
       setIsDarkMode(true);
@@ -338,15 +227,15 @@ const DashboardPage = () => {
       setIsDarkMode(false);
       document.documentElement.setAttribute('data-theme', 'light');
     }
-  }, [navigate]);
+
+    loadDashboardData();
+  }, [navigate, loadDashboardData]);
 
   const handleLogout = () => {
     const confirmLogout = window.confirm('Are you sure you want to logout?');
     
     if (confirmLogout) {
-      localStorage.removeItem('userEmail');
-      localStorage.removeItem('userName');
-      localStorage.removeItem('isLoggedIn');
+      clearSession();
       
       const logoutMessage = document.createElement('div');
       logoutMessage.style.cssText = `
@@ -386,6 +275,9 @@ const DashboardPage = () => {
     handleFileUpload(files);
   };
 
+  // Uploads each file to the real OCR pipeline (POST /api/v1/receipts/upload)
+  // one at a time, so a duplicate/OCR failure on one file doesn't block the
+  // rest, then refreshes the dashboard's real data.
   const handleFileUpload = async (files) => {
     const validFiles = files.filter(file => {
       const validTypes = ['image/png', 'image/jpg', 'image/jpeg', 'application/pdf'];
@@ -404,83 +296,258 @@ const DashboardPage = () => {
       return true;
     });
 
-    if (validFiles.length > 0) {
+    if (validFiles.length === 0) return;
+
+    setDragActive(false);
+    setUploading(true);
+
+    const results = [];
+    for (const file of validFiles) {
       try {
-        setDragActive(false);
-        alert('📤 Processing files... Please wait.');
-
-        await new Promise(resolve => setTimeout(resolve, 2000));
-
-        const mockResults = validFiles.map(file => {
-          const mockMerchants = ['Cafe Coffee Day', 'Dominos Pizza', 'Uber Eats', 'Amazon', 'Flipkart', 'BigBasket'];
-          const mockAmounts = [245, 480, 1250, 899, 650, 340];
-          const randomIndex = Math.floor(Math.random() * mockMerchants.length);
-          
-          return {
-            filename: file.name,
-            status: 'success',
-            merchant: mockMerchants[randomIndex],
-            amount: mockAmounts[randomIndex] + Math.floor(Math.random() * 100),
-            date: new Date().toLocaleDateString(),
-            category: file.name.toLowerCase().includes('food') ? 'Food' : 
-                     file.name.toLowerCase().includes('travel') ? 'Travel' : 'General'
-          };
-        });
-
-        let messages = mockResults.map(result => 
-          `✅ ${result.filename}:\n   ${result.merchant} - ₹${result.amount}\n   Category: ${result.category}`
-        );
-
-        const summary = `🎉 Upload Complete!\n\n` +
-          `✅ Successfully processed ${validFiles.length} receipt(s)\n\n` +
-          `Extracted Information:\n${messages.join('\n\n')}\n\n` +
-          `💡 Demo Mode: In production, this would:\n` +
-          `• Use AI-powered OCR to extract real data\n` +
-          `• Validate against tax databases\n` +
-          `• Store in secure database\n` +
-          `• Update analytics dashboard`;
-
-        alert(summary);
-        setShowUploadModal(false);
-        console.log('Files processed:', mockResults);
-
-      } catch (error) {
-        console.error('Upload error:', error);
-        alert(`❌ Processing failed: ${error.message}`);
+        const saved = await uploadReceipt(file);
+        results.push({ filename: file.name, status: 'success', receipt: saved });
+      } catch (err) {
+        results.push({ filename: file.name, status: 'error', message: err.message });
       }
     }
+
+    setUploading(false);
+
+    const successes = results.filter(r => r.status === 'success');
+    const failures = results.filter(r => r.status === 'error');
+
+    let summary = '';
+    if (successes.length) {
+      summary += `🎉 Successfully processed ${successes.length} receipt(s):\n\n` +
+        successes.map(r => `✅ ${r.filename}:\n   ${r.receipt.vendor} - ₹${r.receipt.amount}\n   Category: ${r.receipt.category}`).join('\n\n');
+    }
+    if (failures.length) {
+      summary += (summary ? '\n\n' : '') + `⚠️ ${failures.length} file(s) couldn't be processed:\n\n` +
+        failures.map(r => `❌ ${r.filename}: ${r.message}`).join('\n');
+    }
+
+    alert(summary);
+    setShowUploadModal(false);
+
+    if (successes.length) {
+      loadDashboardData();
+    }
   };
+
+  const handleDeleteReceipt = async (billId) => {
+    if (!window.confirm('Delete this receipt? This cannot be undone.')) return;
+    try {
+      await apiDeleteReceipt(billId);
+      closeReceiptDetail();
+      loadDashboardData();
+    } catch (err) {
+      alert(`❌ Could not delete receipt: ${err.message}`);
+    }
+  };
+
+  // ── Everything below is derived from real backend data (receipts,
+  // budgetSummary, categoryBreakdown loaded in loadDashboardData above)
+  // instead of the static demo arrays this file used to have. ─────────────
+
+  // Category Split / Category Distribution pie charts, from
+  // GET /api/v1/analytics/spend-by-category.
+  const categoryData = useMemo(() => {
+    const total = categoryBreakdown.reduce((s, c) => s + (c.total || 0), 0);
+    if (!total) return [];
+    return categoryBreakdown.map((c, i) => ({
+      name: c.category,
+      value: Math.round((c.total / total) * 1000) / 10,
+      color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
+    }));
+  }, [categoryBreakdown]);
+
+  // "Spending Trend" area chart — every month present in the user's real
+  // receipts, oldest to newest.
+  const monthlyData = useMemo(() => {
+    const buckets = new Map();
+    receipts.forEach(r => {
+      const key = monthKey(r.date);
+      if (!key) return;
+      if (!buckets.has(key)) buckets.set(key, { spend: 0, receipts: 0, vendors: {} });
+      const b = buckets.get(key);
+      b.spend += r.amount || 0;
+      b.receipts += 1;
+      b.vendors[r.vendor] = (b.vendors[r.vendor] || 0) + (r.amount || 0);
+    });
+    const budget = budgetSummary?.budget || 0;
+    return Array.from(buckets.keys()).sort().map(key => {
+      const b = buckets.get(key);
+      const topVendor = Object.entries(b.vendors).sort((a, c) => c[1] - a[1])[0]?.[0] || '—';
+      return {
+        name: monthLabel(key),
+        spend: b.spend,
+        receipts: b.receipts,
+        avgPerReceipt: b.receipts ? Math.round(b.spend / b.receipts) : 0,
+        topVendor,
+        budget,
+        variance: budget ? Math.round(((b.spend - budget) / budget) * 1000) / 10 : 0,
+      };
+    });
+  }, [receipts, budgetSummary]);
+
+  // Analytics tab's "Monthly Spending Analysis" block — current calendar
+  // month only, computed from real receipts + the real budget summary.
+  const monthlySpendingDetails = useMemo(() => {
+    const now = new Date();
+    const currentKey = now.toISOString().slice(0, 7);
+    const currentReceipts = receipts.filter(r => monthKey(r.date) === currentKey);
+    const budget = budgetSummary?.budget || 0;
+    const totalSpend = budgetSummary?.spent_this_month ?? currentReceipts.reduce((s, r) => s + (r.amount || 0), 0);
+    const budgetUsed = budgetSummary?.percent_used ?? (budget ? (totalSpend / budget) * 100 : 0);
+    const receiptsCount = currentReceipts.length;
+
+    const catTotals = {};
+    currentReceipts.forEach(r => {
+      const cat = r.category || 'Uncategorized';
+      catTotals[cat] = (catTotals[cat] || 0) + (r.amount || 0);
+    });
+    const topCategories = Object.entries(catTotals)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name, amount]) => ({
+        name,
+        amount,
+        percentage: totalSpend ? Math.round((amount / totalSpend) * 100) : 0,
+        receipts: currentReceipts.filter(r => (r.category || 'Uncategorized') === name).length,
+      }));
+
+    const vendorTotals = {};
+    currentReceipts.forEach(r => {
+      if (!vendorTotals[r.vendor]) vendorTotals[r.vendor] = { amount: 0, receipts: 0, category: r.category };
+      vendorTotals[r.vendor].amount += r.amount || 0;
+      vendorTotals[r.vendor].receipts += 1;
+    });
+    const topVendors = Object.entries(vendorTotals)
+      .sort((a, b) => b[1].amount - a[1].amount)
+      .slice(0, 5)
+      .map(([name, v]) => ({ name, amount: v.amount, receipts: v.receipts, category: v.category }));
+
+    const weekBuckets = {};
+    currentReceipts.forEach(r => {
+      const d = new Date(r.date);
+      const day = isNaN(d.getTime()) ? 1 : d.getDate();
+      const label = `Week ${Math.min(4, Math.ceil(day / 7))}`;
+      if (!weekBuckets[label]) weekBuckets[label] = { amount: 0, receipts: 0 };
+      weekBuckets[label].amount += r.amount || 0;
+      weekBuckets[label].receipts += 1;
+    });
+    const weeklyBreakdown = ['Week 1', 'Week 2', 'Week 3', 'Week 4'].map(label => ({
+      week: label,
+      amount: weekBuckets[label]?.amount || 0,
+      receipts: weekBuckets[label]?.receipts || 0,
+      avgDaily: Math.round((weekBuckets[label]?.amount || 0) / 7),
+    }));
+
+    return {
+      currentMonth: {
+        name: now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+        totalSpend,
+        budget,
+        budgetUsed,
+        receiptsCount,
+        topCategories,
+        topVendors,
+        weeklyBreakdown,
+      },
+    };
+  }, [receipts, budgetSummary]);
+
+  // Recent receipts panel — the 6 most recently dated real receipts, or
+  // (if the user typed something in the header search box) every real
+  // receipt matching that vendor/category/amount text.
+  const recentReceipts = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const mapped = [...receipts]
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+      .map(r => ({
+        vendor: r.vendor,
+        amount: r.amount,
+        date: formatShortDate(r.date),
+        category: r.category,
+        status: 'validated',
+        tax: r.tax,
+        receiptId: r.bill_id,
+        billId: r.bill_id,
+        items: [
+          { name: 'Subtotal', amount: r.subtotal || 0 },
+          { name: 'Tax', amount: r.tax || 0 },
+        ],
+      }));
+
+    if (!q) return mapped.slice(0, 6);
+
+    return mapped.filter(r =>
+      (r.vendor || '').toLowerCase().includes(q) ||
+      (r.category || '').toLowerCase().includes(q) ||
+      String(r.amount).includes(q)
+    );
+  }, [receipts, searchQuery]);
+
+  // Validation Alerts panel — real, lightweight insights computed from the
+  // receipts actually on file (exact vendor+amount+date repeats, receipts
+  // the OCR pipeline couldn't categorize), not a scripted demo list.
+  const validationAlerts = useMemo(() => {
+    const alerts = [];
+    const seen = new Set();
+    receipts.forEach(r => {
+      const key = `${r.vendor}|${r.amount}|${r.date}`;
+      if (seen.has(key)) {
+        alerts.push({ type: 'duplicate', message: `Possible duplicate: ${r.vendor} — ₹${r.amount} on ${r.date}`, severity: 'warning' });
+      }
+      seen.add(key);
+    });
+    const uncategorized = receipts.filter(r => !r.category || r.category === 'Uncategorized').length;
+    if (uncategorized > 0) {
+      alerts.push({ type: 'category', message: `${uncategorized} receipt(s) couldn't be auto-categorized — open one and edit its category`, severity: 'warning' });
+    }
+    if (receipts.length > 0) {
+      alerts.push({ type: 'compliance', message: `${receipts.length} receipt(s) processed and saved to your vault`, severity: 'success' });
+    }
+    if (alerts.length === 0) {
+      alerts.push({ type: 'info', message: 'No receipts yet — upload one to see validation insights here.', severity: 'success' });
+    }
+    return alerts;
+  }, [receipts]);
+
+  const totalSpendAll = receipts.reduce((s, r) => s + (r.amount || 0), 0);
+  const totalTax = receipts.reduce((s, r) => s + (r.tax || 0), 0);
+  const avgTaxRate = totalSpendAll ? ((totalTax / totalSpendAll) * 100).toFixed(1) : '0';
 
   const kpiCards = [
     {
       label: 'Total Spend',
-      value: '₹84,230',
-      delta: '↑ 12% vs last month',
+      value: `₹${totalSpendAll.toLocaleString('en-IN')}`,
+      delta: `${receipts.length} receipt(s) total`,
       deltaPositive: true,
       icon: TrendingUp,
       color: 'var(--neon-violet)'
     },
     {
       label: 'Receipts',
-      value: '128',
-      delta: '↑ 8 this week',
+      value: `${receipts.length}`,
+      delta: `${monthlySpendingDetails.currentMonth.receiptsCount} this month`,
       deltaPositive: true,
       icon: FileText,
       color: 'var(--neon-cyan)'
     },
     {
       label: 'Tax Paid',
-      value: '₹6,738',
-      delta: '8% avg rate',
+      value: `₹${totalTax.toLocaleString('en-IN')}`,
+      delta: `${avgTaxRate}% avg rate`,
       deltaPositive: true,
       icon: CheckCircle2,
       color: 'var(--neon-emerald)'
     },
     {
-      label: 'Pending',
-      value: '3',
-      delta: '2 require action',
-      deltaPositive: false,
+      label: 'Avg / Receipt',
+      value: `₹${receipts.length ? Math.round(totalSpendAll / receipts.length).toLocaleString('en-IN') : 0}`,
+      delta: 'across all receipts',
+      deltaPositive: true,
       icon: AlertTriangle,
       color: 'var(--neon-amber)'
     },
@@ -520,10 +587,12 @@ const DashboardPage = () => {
         <div className="sidebar-footer">
           {sidebarOpen && (
             <div className="spending-goal">
-              <div className="goal-label">SPENDING GOAL</div>
-              <div className="goal-value">₹12,450 / ₹50,000</div>
+              <div className="goal-label">MONTHLY BUDGET</div>
+              <div className="goal-value">
+                ₹{Math.round(budgetSummary?.spent_this_month || 0).toLocaleString('en-IN')} / ₹{Math.round(budgetSummary?.budget || 0).toLocaleString('en-IN')}
+              </div>
               <div className="goal-bar">
-                <div className="goal-fill" style={{ width: '24.9%' }} />
+                <div className="goal-fill" style={{ width: `${Math.min(100, budgetSummary?.percent_used || 0)}%` }} />
               </div>
             </div>
           )}
@@ -555,10 +624,50 @@ const DashboardPage = () => {
             />
           </div>
           <div className="header-actions">
-            <button className="header-btn">
-              <Bell size={20} />
-              <span className="badge">3</span>
-            </button>
+            <div className="notification-container" style={{ position: 'relative' }}>
+              <button className="header-btn" onClick={handleNotificationClick}>
+                <Bell size={20} />
+                {getUnreadCount() > 0 && <span className="badge">{getUnreadCount()}</span>}
+              </button>
+              {showNotifications && (
+                <div
+                  style={{
+                    position: 'absolute', top: '48px', right: 0, width: '320px',
+                    maxHeight: '360px', overflowY: 'auto', background: '#1A1A3E',
+                    border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px',
+                    boxShadow: '0 12px 32px rgba(0,0,0,0.4)', zIndex: 50, padding: '8px',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 8px 4px' }}>
+                    <strong style={{ fontSize: '14px' }}>Notifications</strong>
+                    <button
+                      onClick={clearAllNotifications}
+                      style={{ background: 'none', border: 'none', color: '#8B5CF6', cursor: 'pointer', fontSize: '12px' }}
+                    >
+                      Mark all read
+                    </button>
+                  </div>
+                  {notifications.map((n) => (
+                    <div
+                      key={n.id}
+                      onClick={() => markAsRead(n.id)}
+                      style={{
+                        display: 'flex', gap: '10px', padding: '10px 8px',
+                        opacity: n.unread ? 1 : 0.55, cursor: 'pointer',
+                        borderBottom: '1px solid rgba(255,255,255,0.06)',
+                      }}
+                    >
+                      <n.icon size={18} color={n.color} style={{ flexShrink: 0, marginTop: '2px' }} />
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: 600 }}>{n.title}</div>
+                        <div style={{ fontSize: '12px', opacity: 0.75 }}>{n.message}</div>
+                        <div style={{ fontSize: '11px', opacity: 0.5, marginTop: '2px' }}>{n.time}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <button className="header-btn">
               <Settings size={20} />
             </button>
@@ -571,14 +680,14 @@ const DashboardPage = () => {
             </button>
             <div className="user-profile" onClick={handleLogout} style={{ cursor: 'pointer' }}>
               <div className="user-avatar">
-                {localStorage.getItem('userName') 
-                  ? localStorage.getItem('userName').split(' ').map(n => n[0]).join('').toUpperCase()
+                {(me?.name || localStorage.getItem('userName'))
+                  ? (me?.name || localStorage.getItem('userName')).split(' ').map(n => n[0]).join('').toUpperCase()
                   : 'U'
                 }
               </div>
               <div className="user-info hide-mobile">
                 <div className="user-name">
-                  {localStorage.getItem('userName') || 'User'}
+                  {me?.name || localStorage.getItem('userName') || 'User'}
                 </div>
                 <div className="user-role">Click to Logout</div>
               </div>
@@ -604,6 +713,15 @@ const DashboardPage = () => {
                     <span className="count">— tap any slip</span>
                   </div>
                   <div className="receipt-grid">
+                    {receiptsLoading && <div style={{ opacity: 0.6, padding: '12px' }}>Loading your receipts…</div>}
+                    {!receiptsLoading && receiptsError && (
+                      <div style={{ color: '#EF4444', padding: '12px' }}>{receiptsError}</div>
+                    )}
+                    {!receiptsLoading && !receiptsError && recentReceipts.length === 0 && (
+                      <div style={{ opacity: 0.6, padding: '12px' }}>
+                        No receipts yet — click "Upload Receipt" to add your first one.
+                      </div>
+                    )}
                     {recentReceipts.map((receipt, i) => (
                       <div 
                         key={i} 
@@ -620,7 +738,7 @@ const DashboardPage = () => {
                         <div className="slip-foot">
                           <span className="slip-tax">Tax ₹{receipt.tax}</span>
                           <span className={`stamp-badge ${receipt.status}`}>
-                            {receipt.status === 'validated' ? 'Validated' : 
+                            {receipt.status === 'validated' ? 'Saved' : 
                              receipt.status === 'pending' ? 'Pending' : 'Flagged'}
                           </span>
                         </div>
@@ -654,16 +772,22 @@ const DashboardPage = () => {
 
                   <div className="validation-stats">
                     <div className="stat-item">
-                      <div className="stat-number">3</div>
-                      <div className="stat-label">Pending Review</div>
+                      <div className="stat-number">
+                        {receipts.filter(r => !r.category || r.category === 'Uncategorized').length}
+                      </div>
+                      <div className="stat-label">Needs Category</div>
                     </div>
                     <div className="stat-item">
-                      <div className="stat-number">15</div>
-                      <div className="stat-label">Validated Today</div>
+                      <div className="stat-number">
+                        {receipts.filter(r => r.date === new Date().toISOString().slice(0, 10)).length}
+                      </div>
+                      <div className="stat-label">Saved Today</div>
                     </div>
                     <div className="stat-item">
-                      <div className="stat-number">1</div>
-                      <div className="stat-label">Needs Action</div>
+                      <div className="stat-number">
+                        {validationAlerts.filter(a => a.type === 'duplicate').length}
+                      </div>
+                      <div className="stat-label">Possible Duplicates</div>
                     </div>
                   </div>
                 </div>
@@ -829,7 +953,7 @@ const DashboardPage = () => {
               </div>
 
               {/* Monthly Expense Display Component */}
-              <MonthlyExpenseDisplay />
+              <MonthlyExpenseDisplay receipts={receipts} budget={budgetSummary?.budget || 0} />
 
               {/* Original Charts Row */}
               <div className="charts-grid">
@@ -967,8 +1091,8 @@ const DashboardPage = () => {
                   <div className="stamp-circle">
                     <CheckCircle2 size={24} />
                     <div className="stamp-text">
-                      <div className="stamp-main">VALIDATED</div>
-                      <div className="stamp-sub">₹{selectedReceipt.tax}</div>
+                      <div className="stamp-main">SAVED</div>
+                      <div className="stamp-sub">Tax: ₹{selectedReceipt.tax}</div>
                     </div>
                   </div>
                 </div>
@@ -997,6 +1121,14 @@ const DashboardPage = () => {
                   </div>
                 </div>
               )}
+
+              <button
+                className="btn-secondary"
+                style={{ marginTop: '16px', width: '100%', color: '#EF4444', borderColor: '#EF4444' }}
+                onClick={() => handleDeleteReceipt(selectedReceipt.billId)}
+              >
+                Delete Receipt
+              </button>
             </div>
           </div>
         </div>
@@ -1018,7 +1150,7 @@ const DashboardPage = () => {
               onDrop={handleDrop}
             >
               <Upload size={48} className="upload-icon" />
-              <p className="upload-title">Drag & drop your receipts here</p>
+              <p className="upload-title">{uploading ? 'Processing your receipt(s)…' : 'Drag & drop your receipts here'}</p>
               <p className="upload-sub">or click to browse (PNG, JPG, PDF)</p>
               <input
                 type="file"
@@ -1027,12 +1159,14 @@ const DashboardPage = () => {
                 accept=".png,.jpg,.jpeg,.pdf"
                 onChange={handleFileSelect}
                 style={{ display: 'none' }}
+                disabled={uploading}
               />
               <button 
                 className="btn btn-primary upload-btn"
                 onClick={() => document.getElementById('file-upload').click()}
+                disabled={uploading}
               >
-                Select Files
+                {uploading ? 'Uploading…' : 'Select Files'}
               </button>
             </div>
             <div className="upload-formats">
