@@ -5,7 +5,7 @@
 // This module centralizes: base URL config, attaching the token, parsing
 // errors consistently, and auto-logout on 401 (expired/invalid token).
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export function getToken() {
   return localStorage.getItem('token');
@@ -161,11 +161,6 @@ export function getSpendByCategory() {
 
 export function getSubscriptions() {
   return request('/api/v1/analytics/subscriptions');
-}
-
-// ── Chat ────────────────────────────────────────────────────────────────
-export function sendChatMessage(message) {
-  return request('/api/v1/chat', { method: 'POST', body: { message } });
 }
 
 // ── ERP ─────────────────────────────────────────────────────────────────

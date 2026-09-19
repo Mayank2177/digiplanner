@@ -2,13 +2,12 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Receipt, LayoutDashboard, Upload, BarChart3,
-  MessageSquare, Plug, LogOut, Search, Bell, Settings,
+  Plug, LogOut, Search, Bell, Settings,
   ChevronDown, TrendingUp, MoreHorizontal,
   FileText, CheckCircle2,
   AlertTriangle, XCircle, ArrowUpRight,
   Sun, Moon
 } from 'lucide-react';
-import ChatPage from './ChatPage';
 import ERPPage from './ERPPage';
 import MonthlyExpenseDisplay from '../components/MonthlyExpenseDisplay';
 import {
@@ -48,7 +47,6 @@ const sidebarItems = [
   { icon: Upload, label: 'Upload Receipt', id: 'upload' },
   { icon: LayoutDashboard, label: 'Dashboard', id: 'dashboard', active: true },
   { icon: BarChart3, label: 'Analytics', id: 'analytics' },
-  { icon: MessageSquare, label: 'Chat', id: 'chat' },
   { icon: Plug, label: 'ERP & API', id: 'erp' },
 ];
 
@@ -134,6 +132,7 @@ const DashboardPage = () => {
   const [uploading, setUploading] = useState(false);
 
   const loadDashboardData = useCallback(async () => {
+    console.log('[DEBUG] Starting loadDashboardData...');
     setReceiptsLoading(true);
     setReceiptsError(null);
     try {
@@ -143,11 +142,18 @@ const DashboardPage = () => {
         getBudgetSummary(),
         getSpendByCategory(),
       ]);
+      console.log('[DEBUG] Loaded data:', {
+        receiptsCount: receiptsData.length,
+        budget: budgetData,
+        categories: categorySpendData.length
+      });
       setMe(meData);
-      setReceipts(receiptsData);
-      setBudgetSummaryState(budgetData);
-      setCategoryBreakdown(categorySpendData);
+      setReceipts([...receiptsData]); // Force new array reference
+      setBudgetSummaryState({...budgetData}); // Force new object reference
+      setCategoryBreakdown([...categorySpendData]); // Force new array reference
+      console.log('[DEBUG] State updated successfully');
     } catch (err) {
+      console.error('[DEBUG] Error loading data:', err);
       setReceiptsError(err.message || 'Failed to load your data from the server.');
     } finally {
       setReceiptsLoading(false);
@@ -330,7 +336,15 @@ const DashboardPage = () => {
     setShowUploadModal(false);
 
     if (successes.length) {
-      loadDashboardData();
+      // Force immediate refresh of all dashboard data
+      console.log('[DEBUG] Upload successful, refreshing dashboard...');
+      await loadDashboardData();
+      console.log('[DEBUG] Dashboard refresh complete');
+      
+      // Additional notification
+      setTimeout(() => {
+        alert('✅ Dashboard data has been refreshed! Check the Budget Overview and other widgets.');
+      }, 500);
     }
   };
 
@@ -703,6 +717,12 @@ const DashboardPage = () => {
               <div className="dashboard-section-header">
                 <h2>Dashboard Overview</h2>
                 <p>Monitor your recent receipts and validation status</p>
+                {/* Debug info - remove after testing */}
+                <div style={{fontSize: '11px', opacity: 0.6, marginTop: '8px'}}>
+                  Debug: {receipts.length} receipts | Budget: ₹{budgetSummary?.budget || 0} | 
+                  Spent: ₹{budgetSummary?.spent_this_month || 0} | 
+                  Last updated: {new Date().toLocaleTimeString()}
+                </div>
               </div>
 
               <div className="dashboard-main-grid">
@@ -1042,10 +1062,6 @@ const DashboardPage = () => {
                 Upload New Receipt
               </button>
             </div>
-          )}
-
-          {activeTab === 'chat' && (
-            <ChatPage />
           )}
 
           {activeTab === 'erp' && (

@@ -119,14 +119,6 @@ class ERPExportResponse(BaseModel):
     payload_preview: dict
 
 
-class ChatRequest(BaseModel):
-    message: str
-
-
-class ChatResponse(BaseModel):
-    reply: str
-
-
 # ─────────────────────────────────────────────────────────────────────────
 # Root / health
 # ─────────────────────────────────────────────────────────────────────────
@@ -347,41 +339,6 @@ def detect_subscriptions_endpoint(user_email: str = Depends(get_current_user_ema
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     result = detect_subscriptions(df)
     return result.to_dict(orient="records") if hasattr(result, "to_dict") else []
-
-
-# ─────────────────────────────────────────────────────────────────────────
-# CHAT — a real (if simple) implementation over the user's own data.
-# There is no LLM wired in here (the original repo had none either) — this
-# answers a handful of common questions directly from the database so the
-# ChatPage.js has something genuine to call instead of its setTimeout mock.
-# For a true conversational AI, plug an LLM API call in where noted below.
-# ─────────────────────────────────────────────────────────────────────────
-@app.post("/api/v1/chat", response_model=ChatResponse)
-def chat(payload: ChatRequest, user_email: str = Depends(get_current_user_email)):
-    message = payload.message.lower()
-    receipts = fetch_all_receipts(user_email)
-
-    if not receipts:
-        return ChatResponse(reply="You don't have any receipts saved yet — upload one to get started!")
-
-    total_spend = sum(r["amount"] for r in receipts)
-    current_month = datetime.now().strftime("%Y-%m")
-    month_spend = sum(r["amount"] for r in receipts if r["date"].startswith(current_month))
-
-    if "this month" in message or "month" in message:
-        return ChatResponse(reply=f"You've spent ₹{month_spend:,.2f} so far this month across {sum(1 for r in receipts if r['date'].startswith(current_month))} receipts.")
-    if "total" in message or "overall" in message:
-        return ChatResponse(reply=f"Your total tracked spend is ₹{total_spend:,.2f} across {len(receipts)} receipts.")
-    if "vendor" in message or "merchant" in message or "where" in message:
-        top_vendor = max({r["vendor"] for r in receipts}, key=lambda v: sum(r["amount"] for r in receipts if r["vendor"] == v))
-        return ChatResponse(reply=f"Your top vendor by spend is {top_vendor}.")
-
-    # NOTE: To make this a true AI assistant, call an LLM API here (e.g. the
-    # Anthropic API) with `receipts` as context and `payload.message` as the
-    # user's question, and return the model's response instead.
-    return ChatResponse(
-        reply="I can tell you about your total spend, this month's spend, or your top vendor — ask me about one of those!"
-    )
 
 
 # ─────────────────────────────────────────────────────────────────────────
