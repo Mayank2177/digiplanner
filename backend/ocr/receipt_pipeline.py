@@ -1,69 +1,67 @@
 """
-receipt_pipeline.py — NEW MODULE.
+receipt_pipeline.py — DONUT-based receipt processing pipeline.
 
-This is the piece that was entirely missing from the original backend.
-`main.py` had a `/api/v1/ocr/process` endpoint that did nothing but return
-{"status": "WIP"}. Meanwhile a fully-built OCR engine (image_preprocessing,
-paddle_engine, pdf_processor) existed but was never called from any
-endpoint.
+Replaced the previous OCR (PaddleOCR/Tesseract) + regex-based NLP approach
+with DONUT (Document Understanding Transformer), an end-to-end vision model
+that directly extracts structured data from document images.
 
 This module wires it all together:
-  file bytes (image or PDF) -> preprocessing -> OCR text -> parsed fields
+  file bytes (image or PDF) -> DONUT model -> structured receipt data
 
-It also falls back to pytesseract if PaddleOCR isn't installed/working,
-since PaddleOCR is a heavy dependency that can fail to install on some
-machines.
+NO MORE:
+  - Traditional OCR engines (PaddleOCR, Tesseract)
+  - Regex parsing and template matching
+  - Text preprocessing heuristics
+
+DONUT handles document understanding end-to-end using computer vision.
 """
 
 import io
 import tempfile
+import uuid
 from pathlib import Path
 from typing import Any, Dict
+from datetime import date as date_cls
+import signal
 
 from PIL import Image
 
-from ocr.image_preprocessing import preprocess_image
 from ocr.pdf_processor import pdf_to_images, is_pdf
-from ocr.text_parser import parse_receipt_text
-from utils.logger import log_error, log_info
-from config.config import OCR_LANG, OCR_ENGINE
+from ocr.donut_engine import extract_receipt_fields, DONUTError
+from ocr.image_optimizer import optimize_image_for_ocr, get_image_info
+from utils.helpers import clean_amount, clean_date
+from utils.logger import log_error, log_info, log_warning
 
 
 class OCRProcessingError(Exception):
-    """Raised when a file cannot be OCR'd (bad file, no engine available, etc.)."""
+    """Raised when a file cannot be processed (bad file, model failure, etc.)."""
     pass
 
 
-def _run_ocr(pil_image: Image.Image) -> str:
-    """
-    Extract text from a single preprocessed image.
-    Tries PaddleOCR first (better accuracy), falls back to pytesseract.
-    """
-    engine_preference = OCR_ENGINE.lower()
+class TimeoutError(Exception):
+    """Raised when processing exceeds timeout."""
+    pass
 
-    if engine_preference in ("auto", "paddle"):
-        try:
-            from ocr.paddle_engine import extract_text_paddle, PaddleOCRError
-            try:
-                return extract_text_paddle(pil_image, lang=OCR_LANG)
-            except PaddleOCRError as e:
-                log_error(f"PaddleOCR failed, falling back to Tesseract: {e}")
-        except ImportError:
-            log_info("PaddleOCR not installed, falling back to Tesseract.")
 
-    # Fallback: pytesseract
-    try:
-        import pytesseract
-        return pytesseract.image_to_string(pil_image)
-    except Exception as e:
-        raise OCRProcessingError(
-            f"No working OCR engine available (PaddleOCR and Tesseract both failed): {e}"
-        )
+def _guess_category(vendor: str) -> str:
+    """Lightweight category guess based on vendor keywords."""
+    v = vendor.lower() if vendor else ""
+    mapping = {
+        "Food & Dining": ["swiggy", "zomato", "cafe", "restaurant", "food", "pizza", "dominos"],
+        "Travel": ["uber", "ola", "indigo", "airlines", "flight", "cab", "taxi"],
+        "Groceries": ["dmart", "bigbasket", "reliance fresh", "grocery", "mart"],
+        "Utilities": ["bescom", "electricity", "water board", "gas"],
+        "Shopping": ["amazon", "flipkart", "walmart", "target", "costco"],
+    }
+    for category, keywords in mapping.items():
+        if any(k in v for k in keywords):
+            return category
+    return "Uncategorized"
 
 
 def process_receipt_file(file_bytes: bytes, filename: str) -> Dict[str, Any]:
     """
-    Full pipeline: raw uploaded file bytes -> structured receipt dict.
+    Full pipeline: raw uploaded file bytes -> structured receipt dict using DONUT.
 
     Args:
         file_bytes: Raw bytes of the uploaded file.
@@ -71,10 +69,10 @@ def process_receipt_file(file_bytes: bytes, filename: str) -> Dict[str, Any]:
 
     Returns:
         Dict with keys: bill_id, vendor, date, amount, tax, subtotal,
-        category, raw_text  (ready for database.queries.save_receipt()).
+        category (ready for database.queries.save_receipt()).
 
     Raises:
-        OCRProcessingError: If the file can't be read or OCR'd.
+        OCRProcessingError: If the file can't be read or processed.
     """
     suffix = Path(filename).suffix.lower()
 
@@ -101,20 +99,64 @@ def process_receipt_file(file_bytes: bytes, filename: str) -> Dict[str, Any]:
     except Exception as e:
         raise OCRProcessingError(f"Could not read uploaded file: {e}")
 
-    # Preprocess for better OCR accuracy
+    # Optimize image for faster processing
+    img_info = get_image_info(image)
+    log_info(f"Original image: {img_info['width']}x{img_info['height']} ({img_info['megapixels']}MP)")
+    
+    if img_info['megapixels'] > 1.5:  # Images larger than 1.5MP get resized
+        image = optimize_image_for_ocr(image, max_dimension=1280)
+        optimized_info = get_image_info(image)
+        log_info(f"Optimized to: {optimized_info['width']}x{optimized_info['height']} ({optimized_info['megapixels']}MP)")
+
+    # Use DONUT to extract structured data directly from the image
     try:
-        processed_image = preprocess_image(image, mode="simple")
+        extracted = extract_receipt_fields(image)
+    except DONUTError as e:
+        raise OCRProcessingError(f"DONUT processing failed: {e}")
     except Exception as e:
-        log_error(f"Preprocessing failed, using original image: {e}")
-        processed_image = image
+        raise OCRProcessingError(f"Unexpected error during receipt processing: {e}")
 
-    raw_text = _run_ocr(processed_image)
+    # Clean and normalize extracted fields
+    vendor = extracted.get("vendor") or "Unknown Vendor"
+    date_str = extracted.get("date")
+    amount_str = extracted.get("total")
+    tax_str = extracted.get("tax")
+    subtotal_str = extracted.get("subtotal")
+    bill_id = extracted.get("bill_id")
 
-    if not raw_text or not raw_text.strip():
-        raise OCRProcessingError(
-            "No text could be extracted from this file. Try a clearer photo or scan."
-        )
+    # Parse and validate amounts
+    amount = clean_amount(amount_str) if amount_str else None
+    tax = clean_amount(tax_str) if tax_str else 0.0
+    subtotal = clean_amount(subtotal_str) if subtotal_str else 0.0
 
-    parsed = parse_receipt_text(raw_text)
-    log_info(f"Parsed receipt: vendor={parsed['vendor']} amount={parsed['amount']}")
-    return parsed
+    # Parse date
+    parsed_date = clean_date(date_str) if date_str else None
+    date_out = (
+        parsed_date.isoformat()
+        if isinstance(parsed_date, date_cls)
+        else (date_str or date_cls.today().isoformat())
+    )
+
+    # Generate bill_id if not extracted
+    if not bill_id or not bill_id.strip():
+        bill_id = f"REC-{uuid.uuid4().hex[:10].upper()}"
+
+    # Calculate subtotal from amount and tax if not provided
+    if amount is not None and not subtotal:
+        subtotal = max(0.0, amount - tax)
+
+    result = {
+        "bill_id": bill_id,
+        "vendor": vendor,
+        "date": date_out,
+        "amount": amount if amount is not None else 0.0,
+        "tax": tax,
+        "subtotal": subtotal if subtotal else (amount if amount is not None else 0.0),
+        "category": _guess_category(vendor),
+        "currency": extracted.get("currency", "USD"),
+        "raw_text": "",  # DONUT doesn't produce raw text like OCR
+        "line_items": extracted.get("line_items", []),  # Include extracted line items
+    }
+
+    log_info(f"DONUT parsed receipt: vendor={result['vendor']} amount={result['amount']} currency={result['currency']} line_items={len(result['line_items'])}")
+    return result

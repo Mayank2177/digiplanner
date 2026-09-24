@@ -16,13 +16,13 @@ numpy==1.26.4
 sqlalchemy==2.0.32
 openpyxl==3.1.5
 
-# ── OCR pipeline ─────────────────────────────────────────────────────────
+# ── OCR pipeline (DONUT CORD-v2) ────────────────────────────────────────
+# DONUT CORD-v2 is specifically fine-tuned for receipts
 pillow==10.4.0
-opencv-python-headless==4.10.0.84
-pytesseract==0.3.13
 pdf2image==1.17.0
-paddlepaddle==2.6.2
-paddleocr==2.8.1
+transformers>=4.30.0
+torch>=2.0.0
+sentencepiece>=0.1.99
 
 # ── Reports / misc (kept from original, used by other parts of the app) ──
 reportlab==4.2.2

@@ -140,10 +140,24 @@ export function deleteReceipt(billId) {
   return request(`/api/v1/receipts/${encodeURIComponent(billId)}`, { method: 'DELETE' });
 }
 
+export function getLineItems(billId) {
+  return request(`/api/v1/receipts/${encodeURIComponent(billId)}/line-items`);
+}
+
 export function uploadReceipt(file) {
   const formData = new FormData();
   formData.append('file', file);
   return request('/api/v1/receipts/upload', {
+    method: 'POST',
+    isForm: true,
+    body: formData,
+  });
+}
+
+export function uploadMultipleReceipts(files) {
+  const formData = new FormData();
+  files.forEach(file => formData.append('files', file));
+  return request('/api/v1/receipts/upload/batch', {
     method: 'POST',
     isForm: true,
     body: formData,
@@ -161,6 +175,18 @@ export function getSpendByCategory() {
 
 export function getSubscriptions() {
   return request('/api/v1/analytics/subscriptions');
+}
+
+export function getForecast() {
+  return request('/api/v1/analytics/forecast');
+}
+
+export function getTrends(windowDays = 7) {
+  return request(`/api/v1/analytics/trends?window_days=${windowDays}`);
+}
+
+export function searchReceipts(query) {
+  return request(`/api/v1/analytics/search?q=${encodeURIComponent(query)}`);
 }
 
 // ── ERP ─────────────────────────────────────────────────────────────────

@@ -58,6 +58,7 @@ def init_db() -> None:
             tax REAL DEFAULT 0.0,
             subtotal REAL DEFAULT 0.0,
             category TEXT DEFAULT 'Uncategorized',
+            currency TEXT DEFAULT 'USD',
             raw_text TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (bill_id, user_email),
@@ -65,11 +66,38 @@ def init_db() -> None:
         )
         """
     )
+    
+    # Add currency column if it doesn't exist (migration for existing databases)
+    try:
+        db.execute("ALTER TABLE receipts ADD COLUMN currency TEXT DEFAULT 'USD'")
+        db.commit()
+    except sqlite3.OperationalError:
+        # Column already exists
+        pass
 
     db.execute("CREATE INDEX IF NOT EXISTS idx_vendor ON receipts(vendor)")
     db.execute("CREATE INDEX IF NOT EXISTS idx_date ON receipts(date)")
     db.execute("CREATE INDEX IF NOT EXISTS idx_category ON receipts(category)")
     db.execute("CREATE INDEX IF NOT EXISTS idx_user_email ON receipts(user_email)")
+
+    # ── line_items (individual items on each receipt) ───────────────────
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS line_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            bill_id TEXT NOT NULL,
+            user_email TEXT NOT NULL,
+            item_name TEXT NOT NULL,
+            quantity INTEGER DEFAULT 1,
+            unit_price REAL DEFAULT 0.0,
+            total_price REAL NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (bill_id, user_email) REFERENCES receipts(bill_id, user_email) ON DELETE CASCADE
+        )
+        """
+    )
+    
+    db.execute("CREATE INDEX IF NOT EXISTS idx_line_items_receipt ON line_items(bill_id, user_email)")
 
     # ── alerts_sent (tracks which budget-threshold emails were already sent) ─
     db.execute(

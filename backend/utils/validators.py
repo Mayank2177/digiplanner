@@ -30,16 +30,6 @@ def validate_uploaded_file(filename: str, file_size_bytes: int) -> None:
         raise ValueError(f"File size exceeds the {MAX_FILE_SIZE_MB}MB limit")
 
 
-def calculate_items_total(items) -> float:
-    return sum(i["quantity"] * i["price"] for i in items)
-
-
-def validate_total(extracted_total, calculated_total, tolerance: float = 2.0) -> bool:
-    if extracted_total is None:
-        return False
-    return abs(extracted_total - calculated_total) <= tolerance
-
-
 def is_valid_email(email: str) -> bool:
     """Lightweight email format check (no external dependency required)."""
     import re

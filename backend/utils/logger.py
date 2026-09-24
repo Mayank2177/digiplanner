@@ -18,3 +18,7 @@ def log_info(message: str):
 
 def log_error(message: str):
     logging.error(message)
+
+
+def log_warning(message: str):
+    logging.warning(message)

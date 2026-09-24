@@ -3,22 +3,6 @@ from datetime import datetime
 
 
 # -------------------------------------------------
-# TEXT NORMALIZATION
-# -------------------------------------------------
-
-def normalize_text(text: str) -> str:
-    """
-    Normalize OCR text by removing extra spaces and line breaks.
-    """
-    if not text:
-        return ""
-
-    text = text.replace("\n", " ")
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
-
-
-# -------------------------------------------------
 # AMOUNT CLEANER
 # -------------------------------------------------
 
@@ -63,24 +47,3 @@ def clean_date(text: str):
             continue
 
     return None
-
-
-# -------------------------------------------------
-# ITEM NORMALIZER (CRITICAL)
-# -------------------------------------------------
-
-def normalize_items(items):
-    """
-    Guarantee items are returned as a list of dictionaries.
-    Prevents pandas DataFrame crashes.
-    """
-    if not items:
-        return []
-
-    if isinstance(items, dict):
-        return [items]
-
-    if isinstance(items, list):
-        return [i for i in items if isinstance(i, dict)]
-
-    return []

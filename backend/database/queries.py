@@ -18,6 +18,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 from database.db import get_db
+from utils.logger import log_info, log_error
 from utils.notifications import send_email_alert, send_sms_alert
 from utils.logger import log_error
 
@@ -27,16 +28,18 @@ def save_receipt(data: Dict[str, Any], user_email: str) -> None:
     """
     Save a receipt to the database for a specific user.
     Expected keys in `data`: bill_id, vendor, date, amount, tax, subtotal,
-    category (optional), raw_text (optional).
+    category (optional), currency (optional), line_items (optional), raw_text (optional).
     """
     if not user_email:
         raise ValueError("user_email is required")
 
     db = get_db()
+    
+    # Save receipt header
     db.execute(
         """
-        INSERT INTO receipts (bill_id, user_email, vendor, date, amount, tax, subtotal, category, raw_text)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO receipts (bill_id, user_email, vendor, date, amount, tax, subtotal, category, currency, raw_text)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             data["bill_id"],
@@ -47,9 +50,31 @@ def save_receipt(data: Dict[str, Any], user_email: str) -> None:
             float(data.get("tax") or 0.0),
             float(data.get("subtotal") or 0.0),
             data.get("category") or "Uncategorized",
+            data.get("currency") or "USD",
             data.get("raw_text"),
         ),
     )
+    
+    # Save line items if present
+    line_items = data.get("line_items", [])
+    if line_items:
+        for item in line_items:
+            db.execute(
+                """
+                INSERT INTO line_items (bill_id, user_email, item_name, quantity, unit_price, total_price)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    data["bill_id"],
+                    user_email,
+                    item.get("name", "Unknown Item"),
+                    item.get("quantity", 1),
+                    float(item.get("unit_price", 0.0)),
+                    float(item.get("total_price", 0.0)),
+                ),
+            )
+        log_info(f"Saved {len(line_items)} line items for receipt {data['bill_id']}")
+    
     db.commit()
     db.close()
 

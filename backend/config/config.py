@@ -44,21 +44,11 @@ CORS_ORIGINS = [
 ]
 
 # =========================================================
-# OCR CONFIGURATION
+# DONUT MODEL CONFIGURATION
 # =========================================================
-# Only needed on Windows if Tesseract/Poppler aren't on PATH.
-# Set these in your .env file — never hardcode a personal machine path.
-TESSERACT_PATH = os.getenv("TESSERACT_PATH")   # e.g. C:\Program Files\Tesseract-OCR\tesseract.exe
-POPPLER_PATH = os.getenv("POPPLER_PATH")       # e.g. C:\poppler-25.12.0\Library\bin
-OCR_LANG = os.getenv("OCR_LANG", "en")
-OCR_ENGINE = os.getenv("OCR_ENGINE", "auto")   # "auto" | "paddle" | "tesseract"
-
-if platform.system() == "Windows" and TESSERACT_PATH:
-    try:
-        import pytesseract
-        pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
-    except ImportError:
-        pass
+# DONUT (Document Understanding Transformer) replaces traditional OCR
+DONUT_MODEL = os.getenv("DONUT_MODEL", "naver-clova-ix/donut-base-finetuned-docvqa")
+DONUT_DEVICE = int(os.getenv("DONUT_DEVICE", "-1"))  # -1 for CPU, 0 for GPU
 
 # =========================================================
 # FILE UPLOAD CONFIGURATION
@@ -77,7 +67,7 @@ GRAYSCALE = True
 # =========================================================
 # ANALYTICS CONFIGURATION
 # =========================================================
-CURRENCY_SYMBOL = "₹"
+CURRENCY_SYMBOL = "$"
 
 # =========================================================
 # EMAIL / SMS ALERTS (optional — alerts are skipped gracefully if unset)

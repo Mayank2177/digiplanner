@@ -55,6 +55,16 @@ app.add_middleware(
 def on_startup():
     init_db()
     log_info("Database initialized. Receipt Vault API is starting up.")
+    
+    # Preload DONUT model on startup to avoid first-request delay
+    try:
+        log_info("Preloading DONUT model...")
+        from ocr.donut_engine import get_processor
+        get_processor()
+        log_info("✅ DONUT model preloaded and ready!")
+    except Exception as e:
+        log_error(f"⚠️ DONUT preload failed: {e}")
+        log_info("Model will load on first receipt upload instead.")
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -100,6 +110,7 @@ class ReceiptBase(BaseModel):
     tax: float
     subtotal: float
     category: str
+    currency: str = "USD"
 
 
 class ReceiptUpdateRequest(BaseModel):
@@ -227,6 +238,35 @@ def get_receipt(bill_id: str, user_email: str = Depends(get_current_user_email))
     return receipt
 
 
+@app.get("/api/v1/receipts/{bill_id}/line-items")
+def get_receipt_line_items(bill_id: str, user_email: str = Depends(get_current_user_email)):
+    """Fetch line items for a specific receipt."""
+    from database.db import get_db
+    
+    db = get_db()
+    cursor = db.execute(
+        """
+        SELECT item_name, quantity, unit_price, total_price
+        FROM line_items
+        WHERE bill_id = ? AND user_email = ?
+        ORDER BY id
+        """,
+        (bill_id, user_email),
+    )
+    
+    items = []
+    for row in cursor.fetchall():
+        items.append({
+            "name": row["item_name"],
+            "quantity": row["quantity"],
+            "unit_price": row["unit_price"],
+            "total_price": row["total_price"],
+        })
+    
+    db.close()
+    return {"bill_id": bill_id, "line_items": items}
+
+
 @app.patch("/api/v1/receipts/{bill_id}", response_model=ReceiptBase)
 def edit_receipt(
     bill_id: str,
@@ -254,9 +294,7 @@ def remove_receipt(bill_id: str, user_email: str = Depends(get_current_user_emai
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# UPLOAD + OCR — this endpoint DID NOT WORK AT ALL before. It returned
-# {"status": "WIP"} unconditionally. This is the real implementation your
-# DashboardPage.js upload UI should call instead of its mock setTimeout.
+# UPLOAD + OCR — Single and Batch Upload Support
 # ─────────────────────────────────────────────────────────────────────────
 @app.post("/api/v1/receipts/upload", response_model=ReceiptBase, status_code=status.HTTP_201_CREATED)
 async def upload_receipt(
@@ -264,7 +302,7 @@ async def upload_receipt(
     user_email: str = Depends(get_current_user_email),
 ):
     """
-    Accepts a real multipart file upload (image or PDF), runs it through the
+    Accepts a single file upload (image or PDF), runs it through the
     OCR pipeline (ocr/receipt_pipeline.py), parses out vendor/date/amount/tax,
     checks for duplicates, and saves it to the database for the logged-in user.
     """
@@ -291,11 +329,138 @@ async def upload_receipt(
     return parsed
 
 
+class BatchUploadResult(BaseModel):
+    total_files: int
+    successful: int
+    failed: int
+    duplicates: int
+    results: List[dict]
+
+
+@app.post("/api/v1/receipts/upload/batch", response_model=BatchUploadResult)
+async def upload_multiple_receipts(
+    files: List[UploadFile] = File(...),
+    user_email: str = Depends(get_current_user_email),
+):
+    """
+    Accepts multiple file uploads (images or PDFs) and processes them in batch.
+    Returns detailed results for each file including success/failure status.
+    
+    - Processes all files even if some fail
+    - Skips duplicates without failing the entire batch
+    - Returns comprehensive results for UI feedback
+    """
+    if not files or len(files) == 0:
+        raise HTTPException(status_code=400, detail="No files provided")
+    
+    # Limit batch size to prevent resource exhaustion
+    MAX_BATCH_SIZE = 20
+    if len(files) > MAX_BATCH_SIZE:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Too many files. Maximum {MAX_BATCH_SIZE} files per batch"
+        )
+    
+    results = []
+    successful_count = 0
+    failed_count = 0
+    duplicate_count = 0
+    
+    log_info(f"Batch upload started: {len(files)} files for user {user_email}")
+    
+    for idx, file in enumerate(files):
+        file_result = {
+            "filename": file.filename,
+            "status": "processing",
+            "message": "",
+            "receipt_data": None
+        }
+        
+        try:
+            # Read file
+            file_bytes = await file.read()
+            
+            # Validate file
+            try:
+                validate_uploaded_file(file.filename, len(file_bytes))
+            except ValueError as e:
+                file_result["status"] = "failed"
+                file_result["message"] = f"Validation error: {str(e)}"
+                failed_count += 1
+                results.append(file_result)
+                continue
+            
+            # Process with OCR
+            try:
+                parsed = process_receipt_file(file_bytes, file.filename)
+            except OCRProcessingError as e:
+                file_result["status"] = "failed"
+                file_result["message"] = f"OCR error: {str(e)}"
+                failed_count += 1
+                log_error(f"OCR failed for {file.filename} in batch ({user_email}): {e}")
+                results.append(file_result)
+                continue
+            except Exception as e:
+                file_result["status"] = "failed"
+                file_result["message"] = f"Processing error: {str(e)}"
+                failed_count += 1
+                log_error(f"Unexpected error for {file.filename} in batch ({user_email}): {e}")
+                results.append(file_result)
+                continue
+            
+            # Check for duplicates
+            if check_receipt_duplicate(
+                parsed["bill_id"], 
+                parsed["vendor"], 
+                parsed["date"], 
+                parsed["amount"], 
+                user_email
+            ):
+                file_result["status"] = "duplicate"
+                file_result["message"] = "Receipt already exists in your vault"
+                file_result["receipt_data"] = parsed
+                duplicate_count += 1
+                results.append(file_result)
+                continue
+            
+            # Save to database
+            save_receipt(parsed, user_email)
+            file_result["status"] = "success"
+            file_result["message"] = "Receipt processed and saved successfully"
+            file_result["receipt_data"] = parsed
+            successful_count += 1
+            results.append(file_result)
+            
+        except Exception as e:
+            # Catch any unexpected errors
+            file_result["status"] = "failed"
+            file_result["message"] = f"Unexpected error: {str(e)}"
+            failed_count += 1
+            log_error(f"Critical error processing {file.filename} in batch: {e}")
+            results.append(file_result)
+    
+    log_info(
+        f"Batch upload completed for {user_email}: "
+        f"{successful_count} success, {failed_count} failed, {duplicate_count} duplicates"
+    )
+    
+    return BatchUploadResult(
+        total_files=len(files),
+        successful=successful_count,
+        failed=failed_count,
+        duplicates=duplicate_count,
+        results=results
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────
 # BUDGET SUMMARY — powers a "spent this month vs budget" widget
 # ─────────────────────────────────────────────────────────────────────────
 @app.get("/api/v1/budget/summary")
 def budget_summary(user_email: str = Depends(get_current_user_email)):
+    """Enhanced budget summary with burn rate analysis from advanced_analytics."""
+    from analytics.advanced_analytics import calculate_burn_rate
+    
     user = get_user_by_email(user_email)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -304,13 +469,23 @@ def budget_summary(user_email: str = Depends(get_current_user_email)):
     current_month = datetime.now().strftime("%Y-%m")
     spent_this_month = sum(r["amount"] for r in receipts if r["date"].startswith(current_month))
     budget = float(user.get("budget") or 0)
+    
+    # Calculate burn rate for detailed insights
+    days_passed = datetime.now().day
+    burn_rate_data = calculate_burn_rate(spent_this_month, budget, days_passed) if budget > 0 else None
 
-    return {
+    response = {
         "budget": budget,
         "spent_this_month": spent_this_month,
         "remaining": max(budget - spent_this_month, 0),
         "percent_used": round((spent_this_month / budget) * 100, 1) if budget else 0,
     }
+    
+    # Add burn rate insights if available
+    if burn_rate_data:
+        response["burn_rate"] = burn_rate_data
+    
+    return response
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -339,6 +514,133 @@ def detect_subscriptions_endpoint(user_email: str = Depends(get_current_user_ema
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     result = detect_subscriptions(df)
     return result.to_dict(orient="records") if hasattr(result, "to_dict") else []
+
+
+@app.get("/api/v1/analytics/forecast")
+def forecast_spending(user_email: str = Depends(get_current_user_email)):
+    """
+    Predicts next month spending using multiple forecasting methods.
+    Returns simple average, polynomial regression predictions, and burn rate analysis.
+    """
+    import pandas as pd
+    from analytics.forecasting import predict_next_month_spending, predict_spending_polynomial
+    from analytics.advanced_analytics import calculate_burn_rate
+
+    receipts = fetch_all_receipts(user_email)
+    if not receipts:
+        return {
+            "simple_forecast": 0,
+            "daily_average": 0,
+            "polynomial_forecast": [],
+            "burn_rate": None,
+            "message": "No receipt data available for forecasting"
+        }
+
+    df = pd.DataFrame(receipts)
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date"])
+
+    # Simple moving average forecast
+    predicted_spend, daily_avg = predict_next_month_spending(df)
+
+    # Polynomial regression forecast
+    poly_forecast = predict_spending_polynomial(df, degree=2)
+    poly_data = []
+    if poly_forecast is not None and not poly_forecast.empty:
+        poly_data = poly_forecast.to_dict(orient="records")
+        # Convert datetime to string for JSON serialization
+        for item in poly_data:
+            if "date" in item:
+                item["date"] = item["date"].strftime("%Y-%m-%d")
+
+    # Burn rate analysis
+    user = get_user_by_email(user_email)
+    monthly_budget = float(user.get("budget", 0)) if user else 0
+    current_month = datetime.now().strftime("%Y-%m")
+    current_month_receipts = [r for r in receipts if r["date"].startswith(current_month)]
+    current_spend = sum(r["amount"] for r in current_month_receipts)
+    days_passed = datetime.now().day
+    
+    burn_rate = calculate_burn_rate(current_spend, monthly_budget, days_passed)
+
+    return {
+        "simple_forecast": round(predicted_spend, 2),
+        "daily_average": round(daily_avg, 2),
+        "polynomial_forecast": poly_data[:10] if poly_data else [],  # First 10 days
+        "burn_rate": burn_rate,
+        "forecast_summary": {
+            "method": "Moving Average + Polynomial Regression",
+            "confidence": "Medium" if len(receipts) > 10 else "Low",
+            "data_points": len(receipts)
+        }
+    }
+
+
+@app.get("/api/v1/analytics/trends")
+def spending_trends(window_days: int = 7, user_email: str = Depends(get_current_user_email)):
+    """
+    Calculates moving averages and spending trends over time.
+    Useful for visualizing spending patterns in charts.
+    """
+    import pandas as pd
+    from analytics.forecasting import calculate_moving_averages
+
+    receipts = fetch_all_receipts(user_email)
+    if not receipts:
+        return {"daily_spending": [], "moving_average": [], "message": "No data available"}
+
+    df = pd.DataFrame(receipts)
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date"])
+
+    if df.empty:
+        return {"daily_spending": [], "moving_average": [], "message": "No valid dates found"}
+
+    daily_spend, moving_avg = calculate_moving_averages(df, window_days=window_days)
+
+    # Convert to list of dicts for JSON response
+    daily_data = [
+        {"date": date.strftime("%Y-%m-%d"), "amount": float(amount)}
+        for date, amount in daily_spend.items()
+    ]
+
+    ma_data = [
+        {"date": date.strftime("%Y-%m-%d"), "moving_average": float(avg)}
+        for date, avg in moving_avg.items()
+        if pd.notna(avg)
+    ]
+
+    return {
+        "daily_spending": daily_data[-30:],  # Last 30 days
+        "moving_average": ma_data[-30:],     # Last 30 days
+        "window_days": window_days,
+        "total_days": len(daily_data)
+    }
+
+
+@app.get("/api/v1/analytics/search")
+def smart_search(q: str, user_email: str = Depends(get_current_user_email)):
+    """
+    Enhanced search using the analytics search module.
+    Searches across vendor names and categories with fuzzy matching.
+    """
+    import pandas as pd
+    from analytics.search import search_receipts as analytics_search
+
+    if not q or len(q.strip()) < 2:
+        raise HTTPException(status_code=400, detail="Search query must be at least 2 characters")
+
+    receipts = fetch_all_receipts(user_email)
+    if not receipts:
+        return []
+
+    df = pd.DataFrame(receipts)
+    result_df = analytics_search(df, q.strip())
+
+    if result_df.empty:
+        return []
+
+    return result_df.to_dict(orient="records")
 
 
 # ─────────────────────────────────────────────────────────────────────────

@@ -17,6 +17,7 @@ import {
 import {
   isLoggedIn, clearSession, getMe, getReceipts, uploadReceipt,
   getBudgetSummary, getSpendByCategory, deleteReceipt as apiDeleteReceipt,
+  getLineItems,
 } from '../api/client';
 import '../styles/DashboardPage.css';
 
@@ -30,6 +31,17 @@ function formatShortDate(isoDate) {
   const d = new Date(isoDate);
   if (isNaN(d.getTime())) return isoDate;
   return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+}
+
+function getCurrencySymbol(currencyCode) {
+  const symbols = {
+    'USD': '$',
+    'INR': '₹',
+    'EUR': '€',
+    'GBP': '£',
+    'JPY': '¥',
+  };
+  return symbols[currencyCode] || currencyCode;
 }
 
 function monthKey(isoDate) {
@@ -147,10 +159,13 @@ const DashboardPage = () => {
         budget: budgetData,
         categories: categorySpendData.length
       });
+      
+      // Force state updates with new references to trigger re-renders
       setMe(meData);
-      setReceipts([...receiptsData]); // Force new array reference
-      setBudgetSummaryState({...budgetData}); // Force new object reference
-      setCategoryBreakdown([...categorySpendData]); // Force new array reference
+      setReceipts(receiptsData);
+      setBudgetSummaryState(budgetData);
+      setCategoryBreakdown(categorySpendData);
+      
       console.log('[DEBUG] State updated successfully');
     } catch (err) {
       console.error('[DEBUG] Error loading data:', err);
@@ -158,11 +173,27 @@ const DashboardPage = () => {
     } finally {
       setReceiptsLoading(false);
     }
-  }, []);
+  }, []); // Empty deps - function recreated only once
 
-  const handleReceiptClick = (receipt) => {
+  const handleReceiptClick = async (receipt) => {
     setSelectedReceipt(receipt);
     setShowReceiptDetail(true);
+    
+    // Fetch line items for this receipt using centralized API
+    try {
+      const data = await getLineItems(receipt.billId);
+      setSelectedReceipt({
+        ...receipt,
+        line_items: data.line_items || []
+      });
+    } catch (err) {
+      console.error('Failed to fetch line items:', err);
+      // Keep the receipt open even if line items fail
+      setSelectedReceipt({
+        ...receipt,
+        line_items: []
+      });
+    }
   };
 
   const closeReceiptDetail = () => {
@@ -281,9 +312,8 @@ const DashboardPage = () => {
     handleFileUpload(files);
   };
 
-  // Uploads each file to the real OCR pipeline (POST /api/v1/receipts/upload)
-  // one at a time, so a duplicate/OCR failure on one file doesn't block the
-  // rest, then refreshes the dashboard's real data.
+  // Uploads files to the OCR pipeline. Uses batch endpoint for multiple files,
+  // single upload endpoint for one file. Refreshes dashboard data on success.
   const handleFileUpload = async (files) => {
     const validFiles = files.filter(file => {
       const validTypes = ['image/png', 'image/jpg', 'image/jpeg', 'application/pdf'];
@@ -307,44 +337,46 @@ const DashboardPage = () => {
     setDragActive(false);
     setUploading(true);
 
-    const results = [];
-    for (const file of validFiles) {
-      try {
-        const saved = await uploadReceipt(file);
-        results.push({ filename: file.name, status: 'success', receipt: saved });
-      } catch (err) {
-        results.push({ filename: file.name, status: 'error', message: err.message });
+    try {
+      if (validFiles.length === 1) {
+        // Single file upload
+        const saved = await uploadReceipt(validFiles[0]);
+        alert(`🎉 Successfully processed receipt:\n\n✅ ${validFiles[0].name}:\n   ${saved.vendor} - $${saved.amount}\n   Category: ${saved.category}`);
+      } else {
+        // Batch upload - import the batch function
+        const { uploadMultipleReceipts } = await import('../api/client');
+        const result = await uploadMultipleReceipts(validFiles);
+        
+        let summary = `📊 Batch Upload Complete:\n\n`;
+        summary += `✅ Successful: ${result.successful}\n`;
+        summary += `⚠️ Failed: ${result.failed}\n`;
+        summary += `🔄 Duplicates: ${result.duplicates}\n\n`;
+        
+        // Show details
+        result.results.forEach(r => {
+          if (r.status === 'success') {
+            summary += `✅ ${r.filename}: ${r.receipt_data.vendor} - $${r.receipt_data.amount}\n`;
+          } else if (r.status === 'duplicate') {
+            summary += `🔄 ${r.filename}: ${r.message}\n`;
+          } else {
+            summary += `❌ ${r.filename}: ${r.message}\n`;
+          }
+        });
+        
+        alert(summary);
       }
-    }
 
-    setUploading(false);
-
-    const successes = results.filter(r => r.status === 'success');
-    const failures = results.filter(r => r.status === 'error');
-
-    let summary = '';
-    if (successes.length) {
-      summary += `🎉 Successfully processed ${successes.length} receipt(s):\n\n` +
-        successes.map(r => `✅ ${r.filename}:\n   ${r.receipt.vendor} - ₹${r.receipt.amount}\n   Category: ${r.receipt.category}`).join('\n\n');
-    }
-    if (failures.length) {
-      summary += (summary ? '\n\n' : '') + `⚠️ ${failures.length} file(s) couldn't be processed:\n\n` +
-        failures.map(r => `❌ ${r.filename}: ${r.message}`).join('\n');
-    }
-
-    alert(summary);
-    setShowUploadModal(false);
-
-    if (successes.length) {
+      setShowUploadModal(false);
+      
       // Force immediate refresh of all dashboard data
       console.log('[DEBUG] Upload successful, refreshing dashboard...');
       await loadDashboardData();
       console.log('[DEBUG] Dashboard refresh complete');
       
-      // Additional notification
-      setTimeout(() => {
-        alert('✅ Dashboard data has been refreshed! Check the Budget Overview and other widgets.');
-      }, 500);
+    } catch (err) {
+      alert(`❌ Upload failed: ${err.message}`);
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -485,15 +517,15 @@ const DashboardPage = () => {
         category: r.category,
         status: 'validated',
         tax: r.tax,
+        subtotal: r.subtotal,
         receiptId: r.bill_id,
         billId: r.bill_id,
-        items: [
-          { name: 'Subtotal', amount: r.subtotal || 0 },
-          { name: 'Tax', amount: r.tax || 0 },
-        ],
+        currency: r.currency || 'USD',
+        currencySymbol: getCurrencySymbol(r.currency || 'USD'),
+        line_items: [], // Will be populated when modal opens
       }));
 
-    if (!q) return mapped.slice(0, 6);
+    if (!q) return mapped; // Show all receipts
 
     return mapped.filter(r =>
       (r.vendor || '').toLowerCase().includes(q) ||
@@ -511,7 +543,7 @@ const DashboardPage = () => {
     receipts.forEach(r => {
       const key = `${r.vendor}|${r.amount}|${r.date}`;
       if (seen.has(key)) {
-        alerts.push({ type: 'duplicate', message: `Possible duplicate: ${r.vendor} — ₹${r.amount} on ${r.date}`, severity: 'warning' });
+        alerts.push({ type: 'duplicate', message: `Possible duplicate: ${r.vendor} — $${r.amount} on ${r.date}`, severity: 'warning' });
       }
       seen.add(key);
     });
@@ -535,7 +567,7 @@ const DashboardPage = () => {
   const kpiCards = [
     {
       label: 'Total Spend',
-      value: `₹${totalSpendAll.toLocaleString('en-IN')}`,
+      value: `$${totalSpendAll.toLocaleString('en-IN')}`,
       delta: `${receipts.length} receipt(s) total`,
       deltaPositive: true,
       icon: TrendingUp,
@@ -551,7 +583,7 @@ const DashboardPage = () => {
     },
     {
       label: 'Tax Paid',
-      value: `₹${totalTax.toLocaleString('en-IN')}`,
+      value: `$${totalTax.toLocaleString('en-IN')}`,
       delta: `${avgTaxRate}% avg rate`,
       deltaPositive: true,
       icon: CheckCircle2,
@@ -559,7 +591,7 @@ const DashboardPage = () => {
     },
     {
       label: 'Avg / Receipt',
-      value: `₹${receipts.length ? Math.round(totalSpendAll / receipts.length).toLocaleString('en-IN') : 0}`,
+      value: `$${receipts.length ? Math.round(totalSpendAll / receipts.length).toLocaleString('en-IN') : 0}`,
       delta: 'across all receipts',
       deltaPositive: true,
       icon: AlertTriangle,
@@ -1084,13 +1116,45 @@ const DashboardPage = () => {
                 <span>{selectedReceipt.date} • {selectedReceipt.category} • Receipt {selectedReceipt.receiptId}</span>
               </div>
               
-              <div className="receipt-items">
-                {selectedReceipt.items.map((item, index) => (
-                  <div key={index} className="receipt-item-line">
-                    <span className="item-name">{item.name}</span>
-                    <span className="item-amount">₹{item.amount.toLocaleString('en-IN')}</span>
+              {/* Show line items if available */}
+              {selectedReceipt.line_items && selectedReceipt.line_items.length > 0 && (
+                <>
+                  <div className="receipt-items">
+                    <div className="receipt-items-header">
+                      <span>Line Items</span>
+                    </div>
+                    {selectedReceipt.line_items.map((item, index) => (
+                      <div key={index} className="receipt-item-line">
+                        <div className="item-info">
+                          <span className="item-name">{item.name}</span>
+                          {item.quantity > 1 && (
+                            <span className="item-quantity"> x{item.quantity}</span>
+                          )}
+                        </div>
+                        <span className="item-amount">
+                          {selectedReceipt.currencySymbol}{item.total_price?.toFixed(2) || '0.00'}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                  <div className="receipt-divider"></div>
+                </>
+              )}
+              
+              {/* Show subtotal and tax breakdown */}
+              <div className="receipt-items">
+                <div className="receipt-item-line">
+                  <span className="item-name">Subtotal</span>
+                  <span className="item-amount">
+                    {selectedReceipt.currencySymbol}{(selectedReceipt.subtotal || 0).toFixed(2)}
+                  </span>
+                </div>
+                <div className="receipt-item-line">
+                  <span className="item-name">Tax</span>
+                  <span className="item-amount">
+                    {selectedReceipt.currencySymbol}{(selectedReceipt.tax || 0).toFixed(2)}
+                  </span>
+                </div>
               </div>
               
               <div className="receipt-divider"></div>
@@ -1098,7 +1162,9 @@ const DashboardPage = () => {
               <div className="receipt-total-section">
                 <div className="receipt-total-row">
                   <span className="total-label">TOTAL</span>
-                  <span className="total-amount">₹{selectedReceipt.amount.toLocaleString('en-IN')}</span>
+                  <span className="total-amount">
+                    {selectedReceipt.currencySymbol}{selectedReceipt.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                  </span>
                 </div>
               </div>
               
